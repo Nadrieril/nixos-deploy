@@ -1,5 +1,6 @@
 let
-  host = builtins.getEnv "HOST";
+  pkgs = import <nixos> {};
+  lib = pkgs.lib;
 
   deployment = { config, pkgs, lib, ... }: {
     options = {
@@ -8,16 +9,24 @@ let
         type = lib.types.attrsOf lib.types.unspecified;
       };
     };
-
-    config = {
-      networking.hostName = lib.mkDefault host;
-    };
   };
 
+  buildNixOSSystem = configuration:
+    import <nixos/nixos> { inherit configuration; };
+
+
+  nodes = import ./test.nix;
+
+  nodesBuilt = lib.mapAttrs (host: conf: buildNixOSSystem {
+    imports = [
+      deployment
+      conf
+    ];
+    _module.args = { nodes = nodesBuilt; };
+    networking.hostName = lib.mkDefault host;
+  }) nodes;
+
 in
-{
-  imports = [
-    deployment
-    (import ./test.nix)."${host}"
-  ];
-}
+
+nodesBuilt."${builtins.getEnv "HOST"}".config
+
