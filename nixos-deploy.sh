@@ -1,13 +1,21 @@
-CONFIG_EXPR="import ./nixos-config.nix"
-HOST="$1"
-shift 1
-
+#!/bin/env bash
 set -e
 
-buildHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.buildHost | tr -d '"')"
-targetHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.targetHost | tr -d '"')"
-export NIX_SSHOPTS="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.ssh_options | tr -d '"')"
-echo "Building for $targetHost on $buildHost"
+fast=
+
+# parse command line
+
+HOST="$1"
+shift 1
+CONFIG_EXPR="(import ./nixos-config.nix).$HOST"
+NIX_REMOTE_BUILD="./nix-remote-build.sh"
+
+function unescape() {
+    sed -e 's/\\"/"/g' -e 's/^"//' -e 's/"$//' -e 's/\\n/\n/g'
+}
+
+eval "$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.internal.script | unescape)"
+
 
 tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
 NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
@@ -22,14 +30,15 @@ trap cleanup EXIT
 
 
 echo "Building Nix..."
-remotePath=
-for p in $(./nix-remote-build.sh --target-host "$buildHost" --expr "$CONFIG_EXPR" -A "$HOST".nix.package.out); do
-    remotePath="$remotePath${remotePath:+:}$p/bin"
-done
+remotePathOption=
+if [ -z "$fast" ]; then
+    remotePath="$(buildRemoteNix)"
+    remotePathOption="--remote-path $remotePath"
+fi
 
 echo "Building system..."
-pathToConfig="$(./nix-remote-build.sh --build-host "$buildHost" --target-host "$targetHost" --remote-path "$remotePath" --expr "$CONFIG_EXPR" -A "$HOST".system.build.toplevel --cores 7)"
+pathToConfig="$(buildSystem $remotePathOption --cores 7)"
 
 echo "Activating configuration..."
-ssh "$targetHost" $pathToConfig/bin/switch-to-configuration "$1"
+activateConfig "$pathToConfig/bin/switch-to-configuration" "$1"
 
