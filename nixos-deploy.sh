@@ -23,7 +23,7 @@ trap cleanup EXIT
 
 echo "Building Nix..."
 remotePath=
-for p in $(./nix-remote-build.sh --target-host root@build_host --expr "$CONFIG_EXPR" -A nix.package.out); do
+for p in $(./nix-remote-build.sh --target-host "$buildHost" --expr "$CONFIG_EXPR" -A nix.package.out); do
     remotePath="$remotePath${remotePath:+:}$p/bin"
 done
 
