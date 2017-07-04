@@ -5,11 +5,9 @@ shift 1
 
 set -e
 
-IP=$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.ip | tr -d '"')
-echo $IP
-buildHost="root@build_host"
-targetHost="root@$IP"
-
+buildHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.buildHost | tr -d '"')"
+targetHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.targetHost | tr -d '"')"
+echo "Building for $targetHost on $buildHost"
 
 tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
 NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
