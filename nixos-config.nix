@@ -48,5 +48,5 @@ let
 
 in
 
-nodesBuilt."${builtins.getEnv "HOST"}".config
+nodesBuilt
 
