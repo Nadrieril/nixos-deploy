@@ -30,7 +30,7 @@ let
   };
 
   buildNixOSSystem = configuration:
-    import <nixos/nixos> { inherit configuration; };
+    (import <nixos/nixos> { inherit configuration; }).config;
 
 
   nodes = import ./test.nix;
