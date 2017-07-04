@@ -1,4 +1,3 @@
-export NIX_SSHOPTS="-A"
 CONFIG_EXPR="import ./nixos-config.nix"
 HOST="$1"
 shift 1
@@ -7,6 +6,7 @@ set -e
 
 buildHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.buildHost | tr -d '"')"
 targetHost="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.targetHost | tr -d '"')"
+export NIX_SSHOPTS="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A "$HOST".deployment.ssh_options | tr -d '"')"
 echo "Building for $targetHost on $buildHost"
 
 tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
@@ -31,5 +31,5 @@ echo "Building system..."
 pathToConfig="$(./nix-remote-build.sh --build-host "$buildHost" --target-host "$targetHost" --remote-path "$remotePath" --expr "$CONFIG_EXPR" -A "$HOST".system.build.toplevel --cores 7)"
 
 echo "Activating configuration..."
-ssh $NIX_SSHOPTS "$targetHost" $pathToConfig/bin/switch-to-configuration "$1"
+ssh "$targetHost" $pathToConfig/bin/switch-to-configuration "$1"
 

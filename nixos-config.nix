@@ -10,8 +10,15 @@ let
         description = ''
           This option specifies the hostname or IP address ofthe host to build on.
           If null, uses targetHost; if localhost, uses local machine;
-          if neither, needs to be able to ssh into targetHost (you can add
-          "-A" to NIX_SSHOPTS option if needed).
+          if neither, needs to be able to ssh into targetHost.
+        '';
+      };
+
+      deployment.ssh_options = lib.mkOption {
+        type = lib.types.str;
+        default = "-A";
+        description = ''
+          ssh options to use to connect to buildHost.
         '';
       };
 
