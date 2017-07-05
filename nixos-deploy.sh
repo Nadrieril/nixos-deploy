@@ -1,5 +1,5 @@
 #!/bin/env bash
-trap 'exit' ERR
+set -e
 
 function showSyntax() {
 cat <<EOF
@@ -87,15 +87,19 @@ if [ ! -f "$hostsFile" ]; then
 fi
 
 
+function remoteBuild() {
+    ./nix-remote-build.sh "${extraBuildFlags[@]}" "$@"
+}
+
 CONFIG_EXPR="(import ./nixos-config.nix).$host"
-NIX_REMOTE_BUILD="./nix-remote-build.sh"
 export hostsFile
 
 function unescape() {
     sed -e 's/\\"/"/g' -e 's/^"//' -e 's/"$//' -e 's/\\n/\n/g'
 }
 
-eval "$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.internal.script "${extraInstantiateFlags[@]}" | unescape)"
+defs="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.internal.script "${extraInstantiateFlags[@]}")"
+eval "$(echo $defs | unescape)"
 
 
 if [ -n sshMultiplexing ]; then
@@ -116,12 +120,12 @@ fi
 echo "Building Nix..."
 remotePathOption=
 if [ -z "$fast" ]; then
-    remotePath="$(buildRemoteNix "${extraBuildFlags[@]}")"
+    remotePath="$(buildRemoteNix)"
     remotePathOption="--remote-path $remotePath"
 fi
 
 echo "Building system..."
-pathToConfig="$(buildSystem $remotePathOption "${extraBuildFlags[@]}")"
+pathToConfig="$(buildSystem $remotePathOption)"
 
 echo "Activating configuration..."
 activateConfig "$pathToConfig/bin/switch-to-configuration" "$action"

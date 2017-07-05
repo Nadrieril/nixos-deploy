@@ -53,19 +53,23 @@ let
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           function buildRemoteNix() {
+            outPaths=($(remoteBuild ${build_host_opt bh} ${target_host_opt bh} --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
+            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
             local remotePath=
-            for p in $($NIX_REMOTE_BUILD ${build_host_opt bh} ${target_host_opt bh} --expr "$CONFIG_EXPR" -A nix.package.out "$@"); do
+            for p in "${"$"}{outPaths[@]}"; do
                 remotePath="$p/bin:$remotePath"
             done
             echo "$remotePath"
           }
 
           function buildSystem() {
-            $NIX_REMOTE_BUILD ${build_host_opt bh} ${target_host_opt th} --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
+            remoteBuild ${build_host_opt bh} ${target_host_opt th} --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
+            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
 
           function activateConfig() {
             ${option (x: "ssh \"${x}\"") th} "$@"
+            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
         '';
 

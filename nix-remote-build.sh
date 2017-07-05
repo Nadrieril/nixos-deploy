@@ -1,5 +1,6 @@
 #!/bin/env bash
-trap 'exit' ERR
+
+set -e
 
 showSyntax() {
     # TODO
@@ -86,7 +87,8 @@ copyToTarget() {
 }
 
 nixBuild() {
-    local drv="$(nix-instantiate "${instArgs[@]}")"
+    local drv
+    drv="$(nix-instantiate "${instArgs[@]}")"
     if [ -a "$drv" ]; then
         if [ -n "$buildHost" ]; then
             NIX_SSHOPTS=$NIX_SSHOPTS nix-copy-closure --to "$buildHost" "$drv"
