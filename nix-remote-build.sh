@@ -1,6 +1,5 @@
 #!/bin/env bash
-
-set -e
+trap 'exit' ERR
 
 showSyntax() {
     # TODO

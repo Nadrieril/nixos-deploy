@@ -79,7 +79,7 @@ let
     (import <nixos/nixos> { inherit configuration; }).config;
 
 
-  nodes = import ./test.nix;
+  nodes = import (builtins.getEnv "hostsFile");
 
   nodesBuilt = lib.mapAttrs (host: conf: buildNixOSSystem {
     imports = [
