@@ -34,7 +34,7 @@ while [ "$#" -gt 0 ]; do
         --no-ssh-multiplexing)
             sshMultiplexing=
             ;;
-        --max-jobs|-j|--cores|-I)
+        --max-jobs|-j|--cores|-I|--remote-path)
             j="$1"; shift 1
             extraBuildFlags+=("$i" "$j")
             ;;
