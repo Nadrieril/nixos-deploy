@@ -37,8 +37,6 @@ let
     };
 
     config = {
-      networking.hostName = lib.mkDefault name;
-      deployment.targetHost = lib.mkDefault name;
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
       deployment.internal.script =
