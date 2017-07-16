@@ -1,6 +1,8 @@
 #!/bin/env bash
 set -e
 
+SCRIPT_DIR="$(dirname "$0")"
+
 function showSyntax() {
 cat <<EOF
 $0 [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] host action
@@ -88,10 +90,10 @@ fi
 
 
 function remoteBuild() {
-    ./nix-remote-build.sh "${extraBuildFlags[@]}" "$@"
+    $SCRIPT_DIR/nix-remote-build.sh "${extraBuildFlags[@]}" "$@"
 }
 
-CONFIG_EXPR="(import ./nixos-config.nix).$host"
+CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
 export hostsFile
 
 function unescape() {
