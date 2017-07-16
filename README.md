@@ -1,3 +1,25 @@
+# nixos-deploy
+
+A tool similar to `nixops` but limited to remote ssh deployment; essentially `nixos-rebuild` on steroids.
+
+
+## Features
+
+- describe and deploy an interdependant set of NixOS machines
+
+- supports all NixOS activation commands (dry-activate, test, switch, boot)
+
+- supports having a separate build host for each node
+
+
+## Usage
+
+    nixos-deploy.sh [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] host action
+
+
+## Example
+
+```nix
 let
   common_conf = { config, pkgs, lib, name, nodes, ... }: {
     # The `name` module parameter refers to the node name (here machine1 or machine2)
@@ -27,3 +49,11 @@ in
     services.radicale.enable = true;
   };
 }
+```
+
+Run
+
+    nixos-deploy.sh -f machines.nix machine1 switch
+
+to deploy the configuration to `machine1` via ssh.
+
