@@ -65,7 +65,7 @@ let
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
 
-          function activateConfig() {
+          function runOnTarget() {
             ${option (x: "ssh \"${x}\"") th} "$@"
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }

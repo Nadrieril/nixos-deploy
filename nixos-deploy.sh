@@ -130,5 +130,8 @@ echo "Building system..."
 pathToConfig="$(buildSystem $remotePathOption)"
 
 echo "Activating configuration..."
-activateConfig "$pathToConfig/bin/switch-to-configuration" "$action"
+if [ "$action" = switch -o "$action" = boot ]; then
+   runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+fi
+runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
 
