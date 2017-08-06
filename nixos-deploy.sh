@@ -90,7 +90,7 @@ fi
 
 
 function remoteBuild() {
-    $SCRIPT_DIR/nix-remote-build.sh "${extraBuildFlags[@]}" "$@"
+    $SCRIPT_DIR/nix-remote-build.sh "${extraInstantiateFlags[@]}" "${extraBuildFlags[@]}" "$@"
 }
 
 CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"

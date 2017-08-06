@@ -44,11 +44,15 @@ while [ "$#" -gt 0 ]; do
       # -I) # We don't want this in buildArgs
       #   shift 1
       #   ;;
-      "<"*) # nix paths
+      --show-trace)
         instArgs+=("$i")
+        buildArgs+=("$i")
+        ;;
+      --*)
+        buildArgs+=("$i")
         ;;
       *)
-        buildArgs+=("$i")
+        instArgs+=("$i")
         ;;
     esac
 done
