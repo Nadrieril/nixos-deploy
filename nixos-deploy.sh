@@ -107,7 +107,7 @@ eval "$(echo $defs | unescape)"
 function buildRemoteNix() {
     outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
     local remotePath=
-    for p in "${"$"}{outPaths[@]}"; do
+    for p in "${outPaths[@]}"; do
         remotePath="$p/bin:$remotePath"
     done
     echo "$remotePath"
