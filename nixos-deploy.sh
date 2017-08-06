@@ -132,9 +132,9 @@ if [ -n sshMultiplexing ]; then
 fi
 
 
-echo "Building Nix..."
 remotePathOption=
 if [ -z "$fast" ]; then
+    echo "Building Nix..."
     remotePath="$(buildRemoteNix)"
     remotePathOption="--remote-path $remotePath"
 fi
