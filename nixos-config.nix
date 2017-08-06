@@ -66,7 +66,7 @@ let
           }
 
           function runOnTarget() {
-            ${option (x: "ssh \"${x}\"") th} "$@"
+            ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
         '';
