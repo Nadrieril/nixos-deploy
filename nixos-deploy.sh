@@ -104,6 +104,19 @@ defs="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.internal.scri
 eval "$(echo $defs | unescape)"
 
 
+function buildRemoteNix() {
+    outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
+    local remotePath=
+    for p in "${"$"}{outPaths[@]}"; do
+        remotePath="$p/bin:$remotePath"
+    done
+    echo "$remotePath"
+}
+
+function buildSystem() {
+    buildToTargetHost --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
+}
+
 if [ -n sshMultiplexing ]; then
     tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
     # TODO: split SSHOPTS into build/target ssh opts

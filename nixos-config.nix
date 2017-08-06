@@ -1,6 +1,5 @@
 let
-  pkgs = import <nixos> {};
-  lib = pkgs.lib;
+  lib = (import <nixos> {}).lib;
 
   deploymentConf = { name, config, pkgs, lib, ... }: {
     options = {
@@ -50,18 +49,13 @@ let
         in ''
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
-          function buildRemoteNix() {
-            outPaths=($(remoteBuild ${build_host_opt bh} ${target_host_opt bh} --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
+          function buildToBuildHost() {
+            remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
-            local remotePath=
-            for p in "${"$"}{outPaths[@]}"; do
-                remotePath="$p/bin:$remotePath"
-            done
-            echo "$remotePath"
           }
 
-          function buildSystem() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt th} --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
+          function buildToTargetHost() {
+            remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
 
@@ -73,8 +67,6 @@ let
 
     };
   };
-
-
 
 
   buildNixOSSystem = configuration:
