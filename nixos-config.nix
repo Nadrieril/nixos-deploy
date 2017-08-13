@@ -28,6 +28,15 @@ let
         '';
       };
 
+      deployment.image = lib.mkOption {
+        type = lib.types.attrsOf lib.types.unspecified;
+        default = {
+          name = "nixos-${name}-disk-image";
+          format = "qcow2";
+          diskSize = "15000";
+        };
+      };
+
       deployment.internal = lib.mkOption {
         type = lib.types.attrsOf lib.types.unspecified;
         internal = true;
@@ -64,6 +73,10 @@ let
             rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
         '';
+
+        deployment.internal.build-image = import <nixos/nixos/lib/make-disk-image.nix> ({
+          inherit pkgs lib config;
+        } // config.deployment.image);
 
     };
   };

@@ -71,7 +71,7 @@ host="${arguments[0]}"
 action="${arguments[1]}"
 
 case "$action" in
-    switch|boot|test|build|dry-build|dry-activate)
+    switch|boot|test|build|dry-build|dry-activate|build-image)
         ;;
     *)
         echo "$0: unknown action '$action'"
@@ -139,12 +139,18 @@ if [ -z "$fast" ]; then
     remotePathOption="--remote-path $remotePath"
 fi
 
-echo "Building system..."
-pathToConfig="$(buildSystem $remotePathOption)"
+if [ "$action" = "build-image" ]; then
+    echo "Building image..."
+    buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image
 
-echo "Activating configuration..."
-if [ "$action" = switch -o "$action" = boot ]; then
-   runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+else
+    echo "Building system..."
+    pathToConfig="$(buildSystem $remotePathOption)"
+
+    echo "Activating configuration..."
+    if [ "$action" = switch -o "$action" = boot ]; then
+       runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+    fi
+    runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
 fi
-runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
 
