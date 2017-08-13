@@ -48,31 +48,31 @@ let
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
       deployment.internal.script = let
-          default = d: x: if x == null then d else x;
-          option = f: x: if x == null then "" else f x;
-          target_host_opt = x: "--target-host \"${default "localhost" x}\"";
-          build_host_opt = x: "--build-host \"${default "localhost" x}\"";
-          bh = config.deployment.buildHost;
-          th = config.deployment.targetHost;
-        in pkgs.writeScript "nixos-deploy-${name}" ''
-          export NIX_SSHOPTS="${config.deployment.ssh_options}"
+        default = d: x: if x == null then d else x;
+        option = f: x: if x == null then "" else f x;
+        target_host_opt = x: "--target-host \"${default "localhost" x}\"";
+        build_host_opt = x: "--build-host \"${default "localhost" x}\"";
+        bh = config.deployment.buildHost;
+        th = config.deployment.targetHost;
+      in pkgs.writeScript "nixos-deploy-${name}" ''
+        export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
-          function buildToBuildHost() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
-          }
+        function buildToBuildHost() {
+          remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
+        }
 
-          function buildToTargetHost() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
-          }
+        function buildToTargetHost() {
+          remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
+        }
 
-          function runOnTarget() {
-            ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
-          }
-        '';
+        function runOnTarget() {
+          ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
+        }
+      '';
 
-        deployment.internal.build-image = import <nixos/nixos/lib/make-disk-image.nix> ({
-          inherit pkgs lib config;
-        } // config.deployment.image);
+      deployment.internal.build-image = import <nixos/nixos/lib/make-disk-image.nix> ({
+        inherit pkgs lib config;
+      } // config.deployment.image);
 
       deployment.internal.nixos-install = let
         nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
