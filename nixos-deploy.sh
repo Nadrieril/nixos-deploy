@@ -100,7 +100,7 @@ function unescape() {
     sed -e 's/\\"/"/g' -e 's/^"//' -e 's/"$//' -e 's/\\n/\n/g'
 }
 
-defs="$(nix-instantiate --expr "$CONFIG_EXPR" --eval -A deployment.internal.script "${extraInstantiateFlags[@]}")"
+defs="$(nix-instantiate --expr "$CONFIG_EXPR" --read-write-mode --eval -A deployment.internal.script "${extraInstantiateFlags[@]}")"
 eval "$(echo $defs | unescape)"
 
 
