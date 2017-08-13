@@ -94,14 +94,9 @@ function remoteBuild() {
 }
 
 CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
+
 export hostsFile
-
-function unescape() {
-    sed -e 's/\\"/"/g' -e 's/^"//' -e 's/"$//' -e 's/\\n/\n/g'
-}
-
-defs="$(nix-instantiate --expr "$CONFIG_EXPR" --read-write-mode --eval -A deployment.internal.script "${extraInstantiateFlags[@]}")"
-eval "$(echo $defs | unescape)"
+source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
 
 
 function buildRemoteNix() {

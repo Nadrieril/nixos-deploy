@@ -47,30 +47,26 @@ let
     config = {
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
-      deployment.internal.script =
-        let
+      deployment.internal.script = let
           default = d: x: if x == null then d else x;
           option = f: x: if x == null then "" else f x;
           target_host_opt = x: "--target-host \"${default "localhost" x}\"";
           build_host_opt = x: "--build-host \"${default "localhost" x}\"";
           bh = config.deployment.buildHost;
           th = config.deployment.targetHost;
-        in ''
+        in pkgs.writeScript "nixos-deploy-${name}" ''
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           function buildToBuildHost() {
             remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
-            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
 
           function buildToTargetHost() {
             remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
-            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
 
           function runOnTarget() {
             ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
-            rc=$?; if [[ $rc != 0 ]]; then exit $rc; fi
           }
         '';
 
