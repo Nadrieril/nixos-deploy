@@ -71,7 +71,7 @@ host="${arguments[0]}"
 action="${arguments[1]}"
 
 case "$action" in
-    switch|boot|test|build|dry-build|dry-activate|build-image)
+    switch|boot|test|build|dry-build|dry-activate|build-image|install)
         ;;
     *)
         echo "$0: unknown action '$action'"
@@ -137,6 +137,12 @@ fi
 if [ "$action" = "build-image" ]; then
     echo "Building image..."
     buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image
+
+elif [ "$action" = "install" ]; then
+    echo "Building system..."
+    installScript="$(buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install.script)"
+    # echo "Installing to disk..."
+    echo "Run $installScript with the usual nixos-install options to install the system to a disk"
 
 else
     echo "Building system..."

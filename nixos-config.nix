@@ -74,6 +74,20 @@ let
           inherit pkgs lib config;
         } // config.deployment.image);
 
+      deployment.internal.nixos-install = let
+        nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
+          inherit pkgs; modulesPath = null; config = {
+            nix.package.out = (import <nixpkgs> {}).nix.out;
+            inherit (config) system;
+            # should use correct current system values
+            ids.uids.root = "root";
+            ids.gids.nixbld = "nixbld";
+          };
+        }).config.system.build.nixos-install;
+      in pkgs.writeScript "nixos-install-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        ${nixos-install}/bin/nixos-install --closure ${config.system.build.toplevel} "$@"
+      '';
     };
   };
 

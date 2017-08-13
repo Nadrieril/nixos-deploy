@@ -9,7 +9,9 @@ A tool similar to `nixops` but limited to remote ssh deployment; essentially `ni
 
 - supports all NixOS activation commands (dry-activate, test, switch, boot)
 
-- the `build-image` action builds an image with the target configuration on the build host, ready to be deployed as a VM
+- the `build-image` command builds an image with the target configuration on the build host, ready to be deployed as a VM
+
+- the `install` command makes it easy to `nixos-install` a target configuration on a disk, even from a non-NixOS machine
 
 - supports having a separate build host for each node
 
