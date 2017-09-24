@@ -33,6 +33,10 @@ while [ "$#" -gt 0 ]; do
       --remote-path)
         remotePATH="$1"; shift 1
         ;;
+      --max-jobs|-j|--cores|-I|--remote-path)
+        j="$1"; shift 1
+        buildArgs+=("$i" "$j")
+        ;;
       -o)
         out="$1"; shift 1
         buildArgs+=("--add-root" "$out" "--indirect")
