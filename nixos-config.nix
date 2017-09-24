@@ -91,9 +91,24 @@ let
     };
   };
 
+  overrideNixosConf = { name, config, pkgs, lib, ... }: {
+    options = {
+      overrideNixosPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          This option specifies the path to be used to build the nixos configuration.
+        '';
+      };
+    };
+  };
+
 
   buildNixOSSystem = configuration:
-    (import <nixos/nixos> { inherit configuration; }).config;
+    let impureConfig = (import <nixos/nixos> { inherit configuration; }).config;
+    in if impureConfig.overrideNixosPath != null then
+        (import "${impureConfig.overrideNixosPath}/nixos" { inherit configuration; }).config
+      else impureConfig;
 
 
   nodes = import (builtins.getEnv "hostsFile");
@@ -101,6 +116,7 @@ let
   nodesBuilt = lib.mapAttrs (host: conf: buildNixOSSystem {
     imports = [
       deploymentConf
+      overrideNixosConf
       conf
     ];
     _module.args = {
