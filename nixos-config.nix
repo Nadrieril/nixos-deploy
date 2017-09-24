@@ -105,10 +105,15 @@ let
 
 
   buildNixOSSystem = configuration:
-    let impureConfig = (import <nixos/nixos> { inherit configuration; }).config;
-    in if impureConfig.overrideNixosPath != null then
-        (import "${impureConfig.overrideNixosPath}/nixos" { inherit configuration; }).config
-      else impureConfig;
+    let impureLightConfig = (import <nixos/nixos/lib/eval-config.nix> {
+          baseModules = [];
+          modules = [ configuration ];
+          check = false;
+        }).config;
+        nixosPath = if impureLightConfig.overrideNixosPath != null
+          then "${impureLightConfig.overrideNixosPath}/nixos"
+          else <nixos/nixos>;
+    in (import nixosPath { inherit configuration; }).config;
 
 
   nodes = import (builtins.getEnv "hostsFile");
