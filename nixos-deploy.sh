@@ -5,7 +5,7 @@ SCRIPT_DIR="$(dirname "$0")"
 
 function showSyntax() {
 cat <<EOF
-$0 [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] host action
+$0 [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] -h host action
 EOF
 }
 
@@ -14,7 +14,7 @@ extraBuildFlags=()
 extraInstantiateFlags=()
 arguments=()
 hostsFile="default.nix"
-host=
+hosts=()
 action=
 fast=
 sshMultiplexing=1
@@ -22,12 +22,16 @@ sshMultiplexing=1
 while [ "$#" -gt 0 ]; do
     i="$1"; shift 1
     case "$i" in
-        --help|-h)
+        --help)
             showSyntax
             exit 0
             ;;
         --hosts-file|-f)
             hostsFile="$1"
+            shift 1
+            ;;
+        --host|--hosts|-h)
+            hosts+=("$1")
             shift 1
             ;;
         --fast)
@@ -62,13 +66,17 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if [ ${#arguments[@]} -ne 2 ]; then
+if [ ${#arguments[@]} -ne 1 ]; then
     showSyntax
     exit 1
 fi
 
-host="${arguments[0]}"
-action="${arguments[1]}"
+if [ ${#hosts[@]} -eq 0 ]; then
+    showSyntax
+    exit 1
+fi
+
+action="${arguments[0]}"
 
 case "$action" in
     switch|boot|test|build|dry-build|dry-activate|build-image|install)
@@ -88,16 +96,14 @@ if [ ! -f "$hostsFile" ]; then
     exit 1
 fi
 
+if [[ "$hosts" == "all" ]]; then
+   all_hosts_expr='let lib=(import <nixpkgs> {}).lib; in lib.concatStringsSep " " (builtins.attrNames (import ./default.nix))'
+   hosts=($(nix-instantiate --eval -E "$all_hosts_expr" | sed -e 's/^"//' -e 's/"$//'))
+fi
 
 function remoteBuild() {
     $SCRIPT_DIR/nix-remote-build.sh "${extraInstantiateFlags[@]}" "${extraBuildFlags[@]}" "$@"
 }
-
-CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
-
-export hostsFile
-source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
-
 
 function buildRemoteNix() {
     outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
@@ -112,46 +118,57 @@ function buildSystem() {
     buildToTargetHost --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
 }
 
-if [ -n sshMultiplexing ]; then
-    tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
-    # TODO: split SSHOPTS into build/target ssh opts
-    NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
+for host in "${hosts[@]}"; do
+   echo "Deploying $host..."
 
-    cleanup() {
-        for ctrl in "$tmpDir"/ssh-*; do
-            ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
-        done
-        rm -rf "$tmpDir"
-    }
-    trap cleanup EXIT
-fi
+   CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
+
+   export hostsFile
+   source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
+
+   if [ -n sshMultiplexing ]; then
+       tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
+       # TODO: split SSHOPTS into build/target ssh opts
+       NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
+
+       cleanup() {
+           for ctrl in "$tmpDir"/ssh-*; do
+               ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
+           done
+           rm -rf "$tmpDir"
+       }
+       trap cleanup EXIT
+   fi
 
 
-remotePathOption=
-if [ -z "$fast" ]; then
-    echo "Building Nix..."
-    remotePath="$(buildRemoteNix)"
-    remotePathOption="--remote-path $remotePath"
-fi
+   remotePathOption=
+   if [ -z "$fast" ]; then
+       echo "Building Nix..."
+       remotePath="$(buildRemoteNix)"
+       remotePathOption="--remote-path $remotePath"
+   fi
 
-if [ "$action" = "build-image" ]; then
-    echo "Building image..."
-    buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image
+   if [ "$action" = "build-image" ]; then
+       echo "Building image..."
+       buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image
 
-elif [ "$action" = "install" ]; then
-    echo "Building system..."
-    installScript="$(buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install.script)"
-    # echo "Installing to disk..."
-    echo "Run $installScript with the usual nixos-install options to install the system to a disk"
+   elif [ "$action" = "install" ]; then
+       echo "Building system..."
+       installScript="$(buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install.script)"
+       # echo "Installing to disk..."
+       echo "Run $installScript with the usual nixos-install options to install the system to a disk"
 
-else
-    echo "Building system..."
-    pathToConfig="$(buildSystem $remotePathOption)"
+   else
+       echo "Building system..."
+       pathToConfig="$(buildSystem $remotePathOption)"
 
-    echo "Activating configuration..."
-    if [ "$action" = switch -o "$action" = boot ]; then
-       runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-    fi
-    runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
-fi
+       echo "Activating configuration..."
+       if [ "$action" = switch -o "$action" = boot ]; then
+          runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+       fi
+       runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
+   fi
+
+   echo
+done
 
