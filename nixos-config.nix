@@ -37,6 +37,14 @@ let
         };
       };
 
+      deployment.includeInAll = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to deploy this host when deploying all hosts.
+        '';
+      };
+
       deployment.internal = lib.mkOption {
         type = lib.types.attrsOf lib.types.unspecified;
         internal = true;
@@ -68,6 +76,8 @@ let
         function runOnTarget() {
           ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
         }
+
+        includeInAll=${if config.deployment.includeInAll then "true" else ""}
       '';
 
       deployment.internal.build-image = import <nixos/nixos/lib/make-disk-image.nix> ({

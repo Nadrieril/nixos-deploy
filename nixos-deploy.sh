@@ -99,6 +99,7 @@ fi
 if [[ "$hosts" == "all" ]]; then
    all_hosts_expr='let lib=(import <nixpkgs> {}).lib; in lib.concatStringsSep " " (builtins.attrNames (import ./default.nix))'
    hosts=($(nix-instantiate --eval -E "$all_hosts_expr" | sed -e 's/^"//' -e 's/"$//'))
+   deployingAll=true
 fi
 
 function remoteBuild() {
@@ -118,7 +119,7 @@ function buildSystem() {
     buildToTargetHost --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
 }
 
-for host in "${hosts[@]}"; do
+for host in "${hosts[@]}"; do (
    echo "Deploying $host..."
 
    CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
@@ -126,7 +127,12 @@ for host in "${hosts[@]}"; do
    export hostsFile
    source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
 
-   if [ -n sshMultiplexing ]; then
+   if [ -z "$includeInAll" -a -n "$deployingAll" ]; then
+      echo
+      continue
+   fi
+
+   if [ -n "$sshMultiplexing" ]; then
        tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
        # TODO: split SSHOPTS into build/target ssh opts
        NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
@@ -170,5 +176,6 @@ for host in "${hosts[@]}"; do
    fi
 
    echo
+)
 done
 
