@@ -45,6 +45,10 @@ while [ "$#" -gt 0 ]; do
         j="$1"; shift 1
         instArgs+=("$i" "$j")
         ;;
+      --cores)
+        j="$1"; shift 1
+        buildArgs+=("$i" "$j")
+        ;;
       # -I) # We don't want this in buildArgs
       #   shift 1
       #   ;;
