@@ -30,6 +30,7 @@ let
 
       deployment.provisionHost = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
+        default = null;
         description = ''
           This option specifies the hostname or IP address of the host that can provision the current node (e.g. the host running the VM).
           If null, targets local machine; otherwise, buildHost needs to be able to ssh into provisionHost.
