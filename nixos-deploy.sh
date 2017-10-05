@@ -115,10 +115,6 @@ function buildRemoteNix() {
     echo "$remotePath"
 }
 
-function buildSystem() {
-    buildToTargetHost --expr "$CONFIG_EXPR" -A system.build.toplevel "$@"
-}
-
 for host in "${hosts[@]}"; do (
     echo "Deploying $host..."
 
@@ -156,23 +152,18 @@ for host in "${hosts[@]}"; do (
 
     if [ "$action" = "build-image" ]; then
         echo "Building image..."
-        buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image
+        imageScript="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image)"
+        runOnProvisionHost "$imageScript"
 
     elif [ "$action" = "install" ]; then
         echo "Building system..."
-        installScript="$(buildToBuildHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install.script)"
-        # echo "Installing to disk..."
-        echo "Run $installScript with the usual nixos-install options to install the system to a disk"
+        installScript="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install)"
+        runOnProvisionHost "$installScript"
 
     else
         echo "Building system..."
-        pathToConfig="$(buildSystem $remotePathOption)"
-
-        echo "Activating configuration..."
-        if [ "$action" = switch -o "$action" = boot ]; then
-            runOnTarget nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-        fi
-        runOnTarget "$pathToConfig/bin/switch-to-configuration" "$action"
+        activateScript="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.activate)"
+        runOnTarget "$activateScript" "$action"
     fi
 
     echo

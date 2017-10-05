@@ -28,6 +28,14 @@ let
         '';
       };
 
+      deployment.provisionHost = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        description = ''
+          This option specifies the hostname or IP address of the host that can provision the current node (e.g. the host running the VM).
+          If null, targets local machine; otherwise, buildHost needs to be able to ssh into provisionHost.
+        '';
+      };
+
       deployment.image = lib.mkOption {
         type = lib.types.attrsOf lib.types.unspecified;
         default = {
@@ -62,6 +70,7 @@ let
         build_host_opt = x: "--build-host \"${default "localhost" x}\"";
         bh = config.deployment.buildHost;
         th = config.deployment.targetHost;
+        ph = config.deployment.provisionHost;
       in pkgs.writeScript "nixos-deploy-${name}" ''
         export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
@@ -73,16 +82,43 @@ let
           remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
         }
 
+        function buildToProvisionHost() {
+          remoteBuild ${build_host_opt bh} ${target_host_opt ph} "$@"
+        }
+
         function runOnTarget() {
           ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
+        }
+
+        function runOnProvisionHost() {
+          ${if bh == null then "sudo" else "ssh \"${ph}\""} "$@"
         }
 
         includeInAll=${if config.deployment.includeInAll then "true" else ""}
       '';
 
-      deployment.internal.build-image = import <nixos/nixos/lib/make-disk-image.nix> ({
-        inherit pkgs lib config;
-      } // config.deployment.image);
+      deployment.internal.activate = let
+        cfg = config.system.build.toplevel;
+      in pkgs.writeScript "nixos-activate-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        action="$1"
+        pathToConfig="${cfg}"
+
+        echo "Activating configuration..."
+        if [ "$action" = switch -o "$action" = boot ]; then
+            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+        fi
+        "$pathToConfig/bin/switch-to-configuration" "$action"
+      '';
+
+      deployment.internal.build-image = let
+        image = import <nixos/nixos/lib/make-disk-image.nix> ({
+          inherit pkgs lib config;
+        } // config.deployment.imageOptions);
+      in pkgs.writeScript "nixos-image-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        echo ${image}
+      '';
 
       deployment.internal.nixos-install = let
         nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
