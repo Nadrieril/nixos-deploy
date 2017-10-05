@@ -36,13 +36,18 @@ let
         '';
       };
 
-      deployment.image = lib.mkOption {
+      deployment.imageOptions = lib.mkOption {
         type = lib.types.attrsOf lib.types.unspecified;
         default = {
           name = "nixos-${name}-disk-image";
           format = "qcow2";
           diskSize = "15000";
         };
+      };
+
+      deployment.imagePath = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = "/var/lib/libvirt/images/${name}.qcow2";
       };
 
       deployment.includeInAll = lib.mkOption {
@@ -117,7 +122,17 @@ let
         } // config.deployment.imageOptions);
       in pkgs.writeScript "nixos-image-${name}" ''
         #!${pkgs.bash}/bin/bash
-        echo ${image}
+        ${if config.deployment.imagePath == null
+        then "echo ${image}"
+        else ''
+          if [ ! -f "${config.deployment.imagePath}" ]; then
+            cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
+            echo "Image has been copied to ${config.deployment.imagePath}"
+          else
+            echo "File ${config.deployment.imagePath} already exists ! Aborting."
+            exit 1
+          fi
+        ''}
       '';
 
       deployment.internal.nixos-install = let
