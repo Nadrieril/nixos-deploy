@@ -127,6 +127,7 @@ let
         else ''
           if [ ! -f "${config.deployment.imagePath}" ]; then
             cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
+            chmod 640 "${config.deployment.imagePath}"
             echo "Image has been copied to ${config.deployment.imagePath}"
           else
             echo "File ${config.deployment.imagePath} already exists ! Aborting."
