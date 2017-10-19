@@ -97,7 +97,7 @@ let
         }
 
         function runOnProvisionHost() {
-          ${if bh == null then "sudo" else "ssh \"${ph}\""} "$@"
+          ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
         }
 
         includeInAll=${if config.deployment.includeInAll then "true" else ""}
