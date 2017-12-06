@@ -97,9 +97,7 @@ if [ ! -f "$hostsFile" ]; then
 fi
 
 if [[ "$hosts" == "all" ]]; then
-    all_hosts_expr='let lib=(import <nixpkgs> {}).lib; in lib.concatStringsSep " " (builtins.attrNames (import ./default.nix))'
-    hosts=($(nix-instantiate --eval -E "$all_hosts_expr" | sed -e 's/^"//' -e 's/"$//'))
-    deployingAll=true
+    hosts=();
 fi
 
 function remoteBuild() {
@@ -115,15 +113,9 @@ function buildRemoteNix() {
     echo "$remotePath"
 }
 
-for host in "${hosts[@]}"; do (
-    echo "Deploying $host..."
+hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${hosts[@]}")"
+export hostsFile
 
-    CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$action\").nodes.$host"
-
-    export hostsFile
-    source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
-
-    echo
-)
-done
+BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$action\")"
+source $(nix-build --expr "$BASE_CONFIG_EXPR.stage1 ''$hosts_list''" "${extraInstantiateFlags[@]}")
 

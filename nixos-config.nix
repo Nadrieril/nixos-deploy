@@ -1,7 +1,8 @@
 action:
 
 let
-  lib = (import <nixos> {}).lib;
+  pkgs = (import <nixos> {});
+  lib = pkgs.lib;
 
   deploymentConf = { name, config, pkgs, lib, ... }: {
     options = {
@@ -103,13 +104,6 @@ let
             ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
           }
 
-          includeInAll=${if config.deployment.includeInAll then "true" else ""}
-
-
-          if [ -z "$includeInAll" -a -n "$deployingAll" ]; then
-              echo
-              continue
-          fi
 
           if [ -n "$sshMultiplexing" ]; then
               tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
@@ -245,5 +239,21 @@ in
 
 {
   nodes = nodesBuilt;
+
+  stage1 = hosts_json: let
+      nodes = builtins.fromJSON hosts_json;
+      nodes_filtered = if nodes == []
+        then lib.filter
+          (node: nodesBuilt.${node}.deployment.includeInAll)
+          (builtins.attrNames nodesBuilt)
+        else nodes;
+
+    in pkgs.writeScript "nixos-deploy-stage1" (lib.concatMapStringsSep "\n" (node: ''
+      echo "Deploying ${node}..."
+      CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
+      source ${nodesBuilt.${node}.deployment.internal.script}
+      echo
+    '')
+    nodes_filtered);
 }
 
