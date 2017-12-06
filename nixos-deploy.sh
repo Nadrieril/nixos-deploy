@@ -114,8 +114,7 @@ function buildRemoteNix() {
 }
 
 hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${hosts[@]}")"
-export hostsFile
 
-BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix)"
+BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
 source $(nix-build --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list''" "${extraInstantiateFlags[@]}")
 

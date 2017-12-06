@@ -1,3 +1,5 @@
+hostsFile:
+
 let
   pkgs = (import <nixos> {});
   lib = pkgs.lib;
@@ -219,7 +221,7 @@ let
     in (import nixosPath { inherit configuration; }).config;
 
 
-  nodes = import (builtins.getEnv "hostsFile");
+  nodes = import hostsFile;
 
   nodesBuilt = lib.mapAttrs (host: conf: buildNixOSSystem {
     imports = [
