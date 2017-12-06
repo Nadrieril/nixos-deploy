@@ -1,5 +1,3 @@
-action:
-
 let
   pkgs = (import <nixos> {});
   lib = pkgs.lib;
@@ -73,7 +71,7 @@ let
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
       deployment.internal = rec {
-        script = let
+        script = action: let
           default = d: x: if x == null then d else x;
           option = f: x: if x == null then "" else f x;
           target_host_opt = x: "--target-host \"${default "localhost" x}\"";
@@ -129,22 +127,22 @@ let
 
           echo "Building system..."
           ${if action == "build-image" || action == "install" then ''
-              script="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.stage2)"
+              script="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
               runOnProvisionHost "$script"
           '' else ''
-              script="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.stage2)"
+              script="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
               runOnTarget "$script"
           ''}
 
         '';
 
 
-        stage2 =
+        stage2 = action:
           if action == "build-image" then build-image
           else if action == "install" then nixos-install
-          else activate;
+          else activate action;
 
-        activate = let
+        activate = action: let
           cfg = config.system.build.toplevel;
         in pkgs.writeScript "nixos-activate-${name}" ''
           #!${pkgs.bash}/bin/bash
@@ -240,7 +238,7 @@ in
 {
   nodes = nodesBuilt;
 
-  stage1 = hosts_json: let
+  stage1 = action: hosts_json: let
       nodes = builtins.fromJSON hosts_json;
       nodes_filtered = if nodes == []
         then lib.filter
@@ -251,7 +249,7 @@ in
     in pkgs.writeScript "nixos-deploy-stage1" (lib.concatMapStringsSep "\n" (node: ''
       echo "Deploying ${node}..."
       CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
-      source ${nodesBuilt.${node}.deployment.internal.script}
+      source ${nodesBuilt.${node}.deployment.internal.script action}
       echo
     '')
     nodes_filtered);
