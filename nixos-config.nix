@@ -1,3 +1,5 @@
+action:
+
 let
   lib = (import <nixos> {}).lib;
 
@@ -69,133 +71,134 @@ let
     config = {
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
-      deployment.internal.script = let
-        default = d: x: if x == null then d else x;
-        option = f: x: if x == null then "" else f x;
-        target_host_opt = x: "--target-host \"${default "localhost" x}\"";
-        build_host_opt = x: "--build-host \"${default "localhost" x}\"";
-        bh = config.deployment.buildHost;
-        th = config.deployment.targetHost;
-        ph = config.deployment.provisionHost;
-      in pkgs.writeScript "nixos-deploy-${name}" ''
-        export NIX_SSHOPTS="${config.deployment.ssh_options}"
+      deployment.internal = rec {
+        script = let
+          default = d: x: if x == null then d else x;
+          option = f: x: if x == null then "" else f x;
+          target_host_opt = x: "--target-host \"${default "localhost" x}\"";
+          build_host_opt = x: "--build-host \"${default "localhost" x}\"";
+          bh = config.deployment.buildHost;
+          th = config.deployment.targetHost;
+          ph = config.deployment.provisionHost;
+        in pkgs.writeScript "nixos-deploy-${name}" ''
+          export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
-        function buildToBuildHost() {
-          remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
-        }
+          function buildToBuildHost() {
+            remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
+          }
 
-        function buildToTargetHost() {
-          remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
-        }
+          function buildToTargetHost() {
+            remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
+          }
 
-        function buildToProvisionHost() {
-          remoteBuild ${build_host_opt bh} ${target_host_opt ph} "$@"
-        }
+          function buildToProvisionHost() {
+            remoteBuild ${build_host_opt bh} ${target_host_opt ph} "$@"
+          }
 
-        function runOnTarget() {
-          ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
-        }
+          function runOnTarget() {
+            ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
+          }
 
-        function runOnProvisionHost() {
-          ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
-        }
+          function runOnProvisionHost() {
+            ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
+          }
 
-        includeInAll=${if config.deployment.includeInAll then "true" else ""}
-
-
-        if [ -z "$includeInAll" -a -n "$deployingAll" ]; then
-            echo
-            continue
-        fi
-
-        if [ -n "$sshMultiplexing" ]; then
-            tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
-            # TODO: split SSHOPTS into build/target ssh opts
-            NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
-
-            cleanup() {
-                for ctrl in "$tmpDir"/ssh-*; do
-                    ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
-                done
-                rm -rf "$tmpDir"
-            }
-            trap cleanup EXIT
-        fi
+          includeInAll=${if config.deployment.includeInAll then "true" else ""}
 
 
-        remotePathOption=
-        if [ -z "$fast" ]; then
-            echo "Building Nix..."
-            remotePath="$(buildRemoteNix)"
-            remotePathOption="--remote-path $remotePath"
-        fi
-
-        if [ "$action" = "build-image" ]; then
-            echo "Building image..."
-            imageScript="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.build-image)"
-            runOnProvisionHost "$imageScript"
-
-        elif [ "$action" = "install" ]; then
-            echo "Building system..."
-            installScript="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.nixos-install)"
-            runOnProvisionHost "$installScript"
-
-        else
-            echo "Building system..."
-            activateScript="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.activate)"
-            runOnTarget "$activateScript" "$action"
-        fi
-
-      '';
-
-      deployment.internal.activate = let
-        cfg = config.system.build.toplevel;
-      in pkgs.writeScript "nixos-activate-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        action="$1"
-        pathToConfig="${cfg}"
-
-        echo "Activating configuration..."
-        if [ "$action" = switch -o "$action" = boot ]; then
-            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-        fi
-        "$pathToConfig/bin/switch-to-configuration" "$action"
-      '';
-
-      deployment.internal.build-image = let
-        image = import <nixos/nixos/lib/make-disk-image.nix> ({
-          inherit pkgs lib config;
-        } // config.deployment.imageOptions);
-      in pkgs.writeScript "nixos-image-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        ${if config.deployment.imagePath == null
-        then "echo ${image}"
-        else ''
-          if [ ! -f "${config.deployment.imagePath}" ]; then
-            cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
-            chmod 640 "${config.deployment.imagePath}"
-            echo "Image has been copied to ${config.deployment.imagePath}"
-          else
-            echo "File ${config.deployment.imagePath} already exists ! Aborting."
-            exit 1
+          if [ -z "$includeInAll" -a -n "$deployingAll" ]; then
+              echo
+              continue
           fi
-        ''}
-      '';
 
-      deployment.internal.nixos-install = let
-        nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
-          inherit pkgs; modulesPath = null; config = {
-            nix.package.out = (import <nixpkgs> {}).nix.out;
-            inherit (config) system;
-            # should use correct current system values
-            ids.uids.root = "root";
-            ids.gids.nixbld = "nixbld";
-          };
-        }).config.system.build.nixos-install;
-      in pkgs.writeScript "nixos-install-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        ${nixos-install}/bin/nixos-install --closure ${config.system.build.toplevel} "$@"
-      '';
+          if [ -n "$sshMultiplexing" ]; then
+              tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
+              # TODO: split SSHOPTS into build/target ssh opts
+              NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
+
+              cleanup() {
+                  for ctrl in "$tmpDir"/ssh-*; do
+                      ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
+                  done
+                  rm -rf "$tmpDir"
+              }
+              trap cleanup EXIT
+          fi
+
+
+          remotePathOption=
+          if [ -z "$fast" ]; then
+              echo "Building Nix..."
+              remotePath="$(buildRemoteNix)"
+              remotePathOption="--remote-path $remotePath"
+          fi
+
+          echo "Building system..."
+          ${if action == "build-image" || action == "install" then ''
+              script="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.stage2)"
+              runOnProvisionHost "$script"
+          '' else ''
+              script="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR" -A deployment.internal.stage2)"
+              runOnTarget "$script"
+          ''}
+
+        '';
+
+
+        stage2 =
+          if action == "build-image" then build-image
+          else if action == "install" then nixos-install
+          else activate;
+
+        activate = let
+          cfg = config.system.build.toplevel;
+        in pkgs.writeScript "nixos-activate-${name}" ''
+          #!${pkgs.bash}/bin/bash
+          action="${action}"
+          pathToConfig="${cfg}"
+
+          echo "Activating configuration..."
+          if [ "$action" = switch -o "$action" = boot ]; then
+              nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+          fi
+          "$pathToConfig/bin/switch-to-configuration" "$action"
+        '';
+
+        build-image = let
+          image = import <nixos/nixos/lib/make-disk-image.nix> ({
+            inherit pkgs lib config;
+          } // config.deployment.imageOptions);
+        in pkgs.writeScript "nixos-image-${name}" ''
+          #!${pkgs.bash}/bin/bash
+          ${if config.deployment.imagePath == null
+          then "echo ${image}"
+          else ''
+            if [ ! -f "${config.deployment.imagePath}" ]; then
+              cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
+              chmod 640 "${config.deployment.imagePath}"
+              echo "Image has been copied to ${config.deployment.imagePath}"
+            else
+              echo "File ${config.deployment.imagePath} already exists ! Aborting."
+              exit 1
+            fi
+          ''}
+        '';
+
+        nixos-install = let
+          nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
+            inherit pkgs; modulesPath = null; config = {
+              nix.package.out = (import <nixpkgs> {}).nix.out;
+              inherit (config) system;
+              # should use correct current system values
+              ids.uids.root = "root";
+              ids.gids.nixbld = "nixbld";
+            };
+          }).config.system.build.nixos-install;
+        in pkgs.writeScript "nixos-install-${name}" ''
+          #!${pkgs.bash}/bin/bash
+          ${nixos-install}/bin/nixos-install --closure ${config.system.build.toplevel} "$@"
+        '';
+      };
     };
   };
 
@@ -240,5 +243,7 @@ let
 
 in
 
-nodesBuilt
+{
+  nodes = nodesBuilt;
+}
 

@@ -118,7 +118,7 @@ function buildRemoteNix() {
 for host in "${hosts[@]}"; do (
     echo "Deploying $host..."
 
-    CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix).$host"
+    CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$action\").nodes.$host"
 
     export hostsFile
     source $(nix-build --expr "$CONFIG_EXPR" -A deployment.internal.script "${extraInstantiateFlags[@]}")
