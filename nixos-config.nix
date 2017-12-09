@@ -84,6 +84,10 @@ let
         in pkgs.writeScript "nixos-deploy-${name}" ''
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
+          function remoteBuild() {
+              $SCRIPT_DIR/nix-remote-build.sh "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" "$@"
+          }
+
           function buildToBuildHost() {
             remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
           }
@@ -102,6 +106,15 @@ let
 
           function runOnProvisionHost() {
             ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
+          }
+
+          function buildRemoteNix() {
+              outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
+              local remotePath=
+              for p in "${"$"}{outPaths[@]}"; do
+                  remotePath="$p/bin:$remotePath"
+              done
+              echo "$remotePath"
           }
 
 
@@ -248,12 +261,12 @@ in
           (builtins.attrNames nodesBuilt)
         else nodes;
 
-    in pkgs.writeScript "nixos-deploy-stage1" (lib.concatMapStringsSep "\n" (node: ''
-      echo "Deploying ${node}..."
-      CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
-      source ${nodesBuilt.${node}.deployment.internal.script action}
-      echo
-    '')
-    nodes_filtered);
+      in pkgs.writeScript "nixos-deploy-stage1"
+        (lib.concatMapStringsSep "\n" (node: ''
+          echo "Deploying ${node}..."
+          CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
+          source ${nodesBuilt.${node}.deployment.internal.script action}
+          echo
+        '') nodes_filtered);
 }
 

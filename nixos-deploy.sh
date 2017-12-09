@@ -100,19 +100,6 @@ if [[ "$hosts" == "all" ]]; then
     hosts=();
 fi
 
-function remoteBuild() {
-    $SCRIPT_DIR/nix-remote-build.sh "${extraInstantiateFlags[@]}" "${extraBuildFlags[@]}" "$@"
-}
-
-function buildRemoteNix() {
-    outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
-    local remotePath=
-    for p in "${outPaths[@]}"; do
-        remotePath="$p/bin:$remotePath"
-    done
-    echo "$remotePath"
-}
-
 hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${hosts[@]}")"
 
 BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
