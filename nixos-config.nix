@@ -117,7 +117,7 @@ let
           '';
 
           run_on = host: cmd: ''
-            ${if host == null then "sudo" else "ssh \"${host}\""} ${cmd}
+            ${if host == null then "sudo" else "ssh $NIX_SSHOPTS \"${host}\""} ${cmd}
           '';
 
         in pkgs.writeScript "nixos-deploy-${name}" ''
@@ -150,16 +150,30 @@ let
 
           echo "Building system..."
           ${let host = if action == "build-image" || action == "install"
-                        then provision_host else target_host;
-            in ''
-              script="$(${remote_build host "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\""})"
-              ${run_on host ''"$script"''}
+              then provision_host else target_host;
+          in if host == null then ''
+            script="$(${remote_build build_host "$CONFIG_EXPR.deployment.internal.stage3 \\\"${action}\\\""})"
+            ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
+            sudo $script
+          '' else ''
+            script="$(${remote_build build_host "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\" ${if build_host != host then "\\\"${host}\\\"" else "null"}"})"
+            ${run_on build_host ''"$script"''}
           ''}
-
         '';
 
+        stage2 = action: host:
+          pkgs.writeScript "nixos-${name}-stage2"''
+            #!${pkgs.bash}/bin/bash
+            drv="${config.deployment.internal.stage3 action}"
+            ${if host != null then ''
+              nix-copy-closure --to "${host}" "$drv"
+              ssh "${host}" "$drv"
+            '' else ''
+              $drv
+            ''}
+        '';
 
-        stage2 = action:
+        stage3 = action:
           if action == "build-image" then build-image
           else if action == "install" then nixos-install
           else activate action;
