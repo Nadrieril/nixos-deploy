@@ -74,41 +74,27 @@ let
 
       deployment.internal = rec {
         script = action: fast: let
+          build_host = config.deployment.buildHost;
+          target_host = config.deployment.targetHost;
+          provision_host = config.deployment.provisionHost;
+
           default = d: x: if x == null then d else x;
-          option = f: x: if x == null then "" else f x;
-          target_host_opt = x: "--target-host \"${default "localhost" x}\"";
-          build_host_opt = x: "--build-host \"${default "localhost" x}\"";
-          bh = config.deployment.buildHost;
-          th = config.deployment.targetHost;
-          ph = config.deployment.provisionHost;
+          remote_build = host: expr: ''
+            ${./nix-remote-build.sh} \
+                ${if fast == false then "--remote-path \"$remotePath\"" else ""} \
+                "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" \
+                --build-host "${default "localhost" build_host}" \
+                --target-host "${default "localhost" host}" \
+                --expr "${expr}"
+          '';
+
+          run_on = host: cmd: ''
+            ${if host == null then "sudo" else "ssh \"${host}\""} ${cmd}
+          '';
+
         in pkgs.writeScript "nixos-deploy-${name}" ''
           #!${pkgs.bash}/bin/bash
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
-
-          function remoteBuild() {
-              ${./nix-remote-build.sh} "${"$"}{extraInstantiateFlags[@]}" \
-                  "${"$"}{extraBuildFlags[@]}" $remotePathOption "$@"
-          }
-
-          function buildToBuildHost() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt bh} "$@"
-          }
-
-          function buildToTargetHost() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt th} "$@"
-          }
-
-          function buildToProvisionHost() {
-            remoteBuild ${build_host_opt bh} ${target_host_opt ph} "$@"
-          }
-
-          function runOnTarget() {
-            ${if th == null then "sudo" else "ssh \"${th}\""} "$@"
-          }
-
-          function runOnProvisionHost() {
-            ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
-          }
 
           if [ -n "$sshMultiplexing" ]; then
               tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
@@ -125,24 +111,21 @@ let
           fi
 
 
-          remotePathOption=
           ${if fast == false then ''
             echo "Building Nix..."
-            outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR.nix.package.out"))
+            outPaths=($(${remote_build build_host "$CONFIG_EXPR.nix.package.out"}))
             remotePath=
             for p in "${"$"}{outPaths[@]}"; do
                 remotePath="$p/bin:$remotePath"
             done
-            remotePathOption="--remote-path $remotePath"
           '' else ""}
 
           echo "Building system..."
-          ${if action == "build-image" || action == "install" then ''
-              script="$(buildToProvisionHost --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
-              runOnProvisionHost "$script"
-          '' else ''
-              script="$(buildToTargetHost --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
-              runOnTarget "$script"
+          ${let host = if action == "build-image" || action == "install"
+                        then provision_host else target_host;
+            in ''
+              script="$(${remote_build host "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\""})"
+              ${run_on host ''"$script"''}
           ''}
 
         '';
