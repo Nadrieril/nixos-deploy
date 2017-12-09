@@ -79,13 +79,41 @@ let
           provision_host = config.deployment.provisionHost;
 
           default = d: x: if x == null then d else x;
-          remote_build = host: expr: ''
-            ${./nix-remote-build.sh} \
-                ${if fast == false then "--remote-path \"$remotePath\"" else ""} \
-                "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" \
-                --build-host "${default "localhost" build_host}" \
-                --target-host "${default "localhost" host}" \
-                --expr "${expr}"
+
+          remote_build = target_host: expr: let
+              run_on_build_host = force_deft_path: cmd:
+                if build_host == null then
+                  cmd
+                else if fast || force_deft_path then
+                  ''ssh $NIX_SSHOPTS "${build_host}" ${cmd}''
+                else
+                  ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
+
+              copy_to_target = drv:
+                if build_host == target_host then
+                  ""
+                else if target_host == null then
+                  ''nix-copy-closure --from "${build_host}" ${drv}''
+                else
+                  run_on_build_host false ''nix-copy-closure --to "${target_host}" ${drv}'';
+
+            in ''
+              export NIX_SSHOPTS
+
+              drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
+              if [ -a "$drv" ]; then
+                  ${lib.optionalString (build_host != null)
+                    ''nix-copy-closure --to "${build_host}" "$drv"''
+                  }
+                  outPaths=($(${run_on_build_host true ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
+
+                  ${copy_to_target "${"$"}{outPaths[@]}"}
+
+                  echo "${"$"}{outPaths[@]}"
+              else
+                  echo "nix-instantiate failed" >&2
+                  exit 1
+              fi
           '';
 
           run_on = host: cmd: ''
