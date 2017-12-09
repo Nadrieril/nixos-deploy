@@ -82,6 +82,7 @@ let
           th = config.deployment.targetHost;
           ph = config.deployment.provisionHost;
         in pkgs.writeScript "nixos-deploy-${name}" ''
+          #!${pkgs.bash}/bin/bash
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           function remoteBuild() {
@@ -261,12 +262,15 @@ in
           (builtins.attrNames nodesBuilt)
         else nodes;
 
-      in pkgs.writeScript "nixos-deploy-stage1"
-        (lib.concatMapStringsSep "\n" (node: ''
+      in pkgs.writeScript "nixos-deploy-stage1" ''
+        #!${pkgs.bash}/bin/bash
+        export extraInstantiateFlags extraBuildFlags SCRIPT_DIR sshMultiplexing fast
+
+        ${(lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
-          CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
-          source ${nodesBuilt.${node}.deployment.internal.script action}
-          echo
-        '') nodes_filtered);
+          export CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
+          ${nodesBuilt.${node}.deployment.internal.script action}
+        '') nodes_filtered)}
+      '';
 }
 
