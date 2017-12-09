@@ -146,21 +146,9 @@ let
             ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
             sudo $script
           '' else ''
-            script="$(${remote_build "$CONFIG_EXPR.deployment.internal.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
+            script="$(${remote_build "$BASE_CONFIG_EXPR.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
             ${run_on build_host ''"$script"''}
           ''}
-        '';
-
-        stage2 = current_host: target_node: target_host: action:
-          pkgs.writeScript "nixos-${name}-stage2"''
-            #!${pkgs.bash}/bin/bash
-            drv="${nodes.${target_node}.deployment.internal.stage3 action}"
-            ${if target_host != current_host then ''
-              nix-copy-closure --to "${target_host}" "$drv"
-              ssh "${target_host}" "$drv"
-            '' else ''
-              $drv
-            ''}
         '';
 
         stage3 = action:
@@ -275,6 +263,7 @@ in
       in pkgs.writeScript "nixos-deploy-stage1" ''
         #!${pkgs.bash}/bin/bash
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
+        export BASE_CONFIG_EXPR
 
         ${(lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
@@ -282,5 +271,17 @@ in
           ${nodesBuilt.${node}.deployment.internal.script action fast}
         '') nodes_filtered)}
       '';
+
+  stage2 = current_host: target_node: target_host: action:
+    pkgs.writeScript "nixos-${target_node}-stage2"''
+      #!${pkgs.bash}/bin/bash
+      drv="${nodesBuilt.${target_node}.deployment.internal.stage3 action}"
+      ${if target_host != current_host then ''
+        nix-copy-closure --to "${target_host}" "$drv"
+        ssh "${target_host}" "$drv"
+      '' else ''
+        $drv
+      ''}
+  '';
 }
 
