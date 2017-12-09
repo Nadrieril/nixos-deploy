@@ -73,7 +73,7 @@ let
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
 
       deployment.internal = rec {
-        script = action: let
+        script = action: fast: let
           default = d: x: if x == null then d else x;
           option = f: x: if x == null then "" else f x;
           target_host_opt = x: "--target-host \"${default "localhost" x}\"";
@@ -86,7 +86,8 @@ let
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           function remoteBuild() {
-              ${./nix-remote-build.sh} "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" "$@"
+              ${./nix-remote-build.sh} "${"$"}{extraInstantiateFlags[@]}" \
+                  "${"$"}{extraBuildFlags[@]}" $remotePathOption "$@"
           }
 
           function buildToBuildHost() {
@@ -109,16 +110,6 @@ let
             ${if ph == null then "sudo" else "ssh \"${ph}\""} "$@"
           }
 
-          function buildRemoteNix() {
-              outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR" -A nix.package.out "$@"))
-              local remotePath=
-              for p in "${"$"}{outPaths[@]}"; do
-                  remotePath="$p/bin:$remotePath"
-              done
-              echo "$remotePath"
-          }
-
-
           if [ -n "$sshMultiplexing" ]; then
               tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
               # TODO: split SSHOPTS into build/target ssh opts
@@ -135,18 +126,22 @@ let
 
 
           remotePathOption=
-          if [ -z "$fast" ]; then
-              echo "Building Nix..."
-              remotePath="$(buildRemoteNix)"
-              remotePathOption="--remote-path $remotePath"
-          fi
+          ${if fast == false then ''
+            echo "Building Nix..."
+            outPaths=($(buildToBuildHost --expr "$CONFIG_EXPR.nix.package.out"))
+            remotePath=
+            for p in "${"$"}{outPaths[@]}"; do
+                remotePath="$p/bin:$remotePath"
+            done
+            remotePathOption="--remote-path $remotePath"
+          '' else ""}
 
           echo "Building system..."
           ${if action == "build-image" || action == "install" then ''
-              script="$(buildToProvisionHost $remotePathOption --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
+              script="$(buildToProvisionHost --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
               runOnProvisionHost "$script"
           '' else ''
-              script="$(buildToTargetHost $remotePathOption --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
+              script="$(buildToTargetHost --expr "$CONFIG_EXPR.deployment.internal.stage2 \"${action}\"")"
               runOnTarget "$script"
           ''}
 
@@ -254,7 +249,7 @@ in
 {
   nodes = nodesBuilt;
 
-  stage1 = action: hosts_json: let
+  stage1 = action: hosts_json: fast: let
       nodes = builtins.fromJSON hosts_json;
       nodes_filtered = if nodes == []
         then lib.filter
@@ -264,12 +259,12 @@ in
 
       in pkgs.writeScript "nixos-deploy-stage1" ''
         #!${pkgs.bash}/bin/bash
-        export extraInstantiateFlags extraBuildFlags sshMultiplexing fast
+        export extraInstantiateFlags extraBuildFlags sshMultiplexing
 
         ${(lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
           export CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
-          ${nodesBuilt.${node}.deployment.internal.script action}
+          ${nodesBuilt.${node}.deployment.internal.script action fast}
         '') nodes_filtered)}
       '';
 }

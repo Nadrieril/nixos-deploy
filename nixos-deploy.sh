@@ -16,7 +16,7 @@ arguments=()
 hostsFile="default.nix"
 hosts=()
 action=
-fast=
+fast="false"
 sshMultiplexing=1
 
 while [ "$#" -gt 0 ]; do
@@ -35,7 +35,7 @@ while [ "$#" -gt 0 ]; do
             shift 1
             ;;
         --fast)
-            fast=1
+            fast="true"
             ;;
         --no-ssh-multiplexing)
             sshMultiplexing=
@@ -103,6 +103,6 @@ fi
 hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${hosts[@]}")"
 
 export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
-export extraInstantiateFlags extraBuildFlags sshMultiplexing fast
-$(nix-build --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list''" "${extraInstantiateFlags[@]}")
+export extraInstantiateFlags extraBuildFlags sshMultiplexing
+$(nix-build --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
 
