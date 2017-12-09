@@ -86,7 +86,7 @@ let
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           function remoteBuild() {
-              $SCRIPT_DIR/nix-remote-build.sh "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" "$@"
+              ${./nix-remote-build.sh} "${"$"}{extraInstantiateFlags[@]}" "${"$"}{extraBuildFlags[@]}" "$@"
           }
 
           function buildToBuildHost() {
@@ -264,7 +264,7 @@ in
 
       in pkgs.writeScript "nixos-deploy-stage1" ''
         #!${pkgs.bash}/bin/bash
-        export extraInstantiateFlags extraBuildFlags SCRIPT_DIR sshMultiplexing fast
+        export extraInstantiateFlags extraBuildFlags sshMultiplexing fast
 
         ${(lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
