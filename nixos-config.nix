@@ -4,7 +4,7 @@ let
   pkgs = (import <nixos> {});
   lib = pkgs.lib;
 
-  deploymentConf = { name, config, pkgs, lib, ... }: {
+  deploymentConf = { name, nodes, config, pkgs, lib, ... }: {
     options = {
       deployment.buildHost = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -146,18 +146,18 @@ let
             ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
             sudo $script
           '' else ''
-            script="$(${remote_build "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\" ${if build_host != host then "\\\"${host}\\\"" else "null"}"})"
+            script="$(${remote_build "$CONFIG_EXPR.deployment.internal.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
             ${run_on build_host ''"$script"''}
           ''}
         '';
 
-        stage2 = action: host:
+        stage2 = current_host: target_node: target_host: action:
           pkgs.writeScript "nixos-${name}-stage2"''
             #!${pkgs.bash}/bin/bash
-            drv="${config.deployment.internal.stage3 action}"
-            ${if host != null then ''
-              nix-copy-closure --to "${host}" "$drv"
-              ssh "${host}" "$drv"
+            drv="${nodes.${target_node}.deployment.internal.stage3 action}"
+            ${if target_host != current_host then ''
+              nix-copy-closure --to "${target_host}" "$drv"
+              ssh "${target_host}" "$drv"
             '' else ''
               $drv
             ''}
