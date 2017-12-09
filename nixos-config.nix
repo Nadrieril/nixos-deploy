@@ -80,7 +80,7 @@ let
 
           default = d: x: if x == null then d else x;
 
-          remote_build = target_host: expr: let
+          remote_build = expr: let
               run_on_build_host = force_deft_path: cmd:
                 if build_host == null then
                   cmd
@@ -88,14 +88,6 @@ let
                   ''ssh $NIX_SSHOPTS "${build_host}" ${cmd}''
                 else
                   ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
-
-              copy_to_target = drv:
-                if build_host == target_host then
-                  ""
-                else if target_host == null then
-                  ''nix-copy-closure --from "${build_host}" ${drv}''
-                else
-                  run_on_build_host false ''nix-copy-closure --to "${target_host}" ${drv}'';
 
             in ''
               export NIX_SSHOPTS
@@ -106,8 +98,6 @@ let
                     ''nix-copy-closure --to "${build_host}" "$drv"''
                   }
                   outPaths=($(${run_on_build_host true ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
-
-                  ${copy_to_target "${"$"}{outPaths[@]}"}
 
                   echo "${"$"}{outPaths[@]}"
               else
@@ -141,7 +131,7 @@ let
 
           ${if fast == false then ''
             echo "Building Nix..."
-            outPaths=($(${remote_build build_host "$CONFIG_EXPR.nix.package.out"}))
+            outPaths=($(${remote_build "$CONFIG_EXPR.nix.package.out"}))
             remotePath=
             for p in "${"$"}{outPaths[@]}"; do
                 remotePath="$p/bin:$remotePath"
@@ -152,11 +142,11 @@ let
           ${let host = if action == "build-image" || action == "install"
               then provision_host else target_host;
           in if host == null then ''
-            script="$(${remote_build build_host "$CONFIG_EXPR.deployment.internal.stage3 \\\"${action}\\\""})"
+            script="$(${remote_build "$CONFIG_EXPR.deployment.internal.stage3 \\\"${action}\\\""})"
             ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
             sudo $script
           '' else ''
-            script="$(${remote_build build_host "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\" ${if build_host != host then "\\\"${host}\\\"" else "null"}"})"
+            script="$(${remote_build "$CONFIG_EXPR.deployment.internal.stage2 \\\"${action}\\\" ${if build_host != host then "\\\"${host}\\\"" else "null"}"})"
             ${run_on build_host ''"$script"''}
           ''}
         '';
