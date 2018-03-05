@@ -2,10 +2,11 @@
 set -e
 
 SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_NAME=$(basename $0)
 
 function showSyntax() {
 cat <<EOF
-$0 [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] -h host action
+$SCRIPT_NAME [-f hosts_file] [--fast] [--no-ssh-multiplexing] [BUILD_OPTIONS...] -h host action
 EOF
 }
 
@@ -57,7 +58,7 @@ while [ "$#" -gt 0 ]; do
             extraBuildFlags+=("$i" "$j" "$k")
             ;;
         --*)
-            echo "$0: unknown option '$i'"
+            echo "$SCRIPT_NAME: unknown option '$i'"
             exit 1
             ;;
         *)
@@ -82,7 +83,7 @@ case "$action" in
     switch|boot|test|build|dry-build|dry-activate|build-image|install)
         ;;
     *)
-        echo "$0: unknown action '$action'"
+        echo "$SCRIPT_NAME: unknown action '$action'"
         exit 1
         ;;
 esac
@@ -92,7 +93,7 @@ if [[ "$hostsFile" != /* ]]; then
 fi
 
 if [ ! -f "$hostsFile" ]; then
-    echo "$0: file '$hostsFile' does not exist"
+    echo "$SCRIPT_NAME: file '$hostsFile' does not exist"
     exit 1
 fi
 
@@ -105,4 +106,3 @@ hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${h
 export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
 $(nix-build --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
-
