@@ -195,13 +195,7 @@ let
 
         nixos-install = let
           nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
-            inherit pkgs; modulesPath = null; config = {
-              nix.package.out = (import <nixpkgs> {}).nix.out;
-              inherit (config) system;
-              # should use correct current system values
-              ids.uids.root = "root";
-              ids.gids.nixbld = "nixbld";
-            };
+            inherit pkgs lib config; modulesPath = null;
           }).config.system.build.nixos-install;
         in pkgs.writeScript "nixos-install-${name}" ''
           #!${pkgs.bash}/bin/bash
