@@ -71,89 +71,6 @@ let
 
     config = {
       deployment.buildHost = lib.mkDefault config.deployment.targetHost;
-
-      deployment.internal = rec {
-        script = action: fast: let
-          build_host = config.deployment.buildHost;
-          target_host = config.deployment.targetHost;
-          provision_host = config.deployment.provisionHost;
-
-          default = d: x: if x == null then d else x;
-
-          remote_build = expr: let
-              run_on_build_host = force_deft_path: cmd:
-                if build_host == null then
-                  cmd
-                else if fast || force_deft_path then
-                  ''ssh $NIX_SSHOPTS "${build_host}" ${cmd}''
-                else
-                  ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
-
-            in pkgs.writeScript "remote-build-${name}" ''
-              #!${pkgs.bash}/bin/bash
-              export NIX_SSHOPTS
-              set -e
-
-              drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
-              if [ -a "$drv" ]; then
-                  ${lib.optionalString (build_host != null)
-                    ''nix-copy-closure --to "${build_host}" "$drv"''
-                  }
-                  outPaths=($(${run_on_build_host true ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
-
-                  echo "${"$"}{outPaths[@]}"
-              else
-                  echo "nix-instantiate failed" >&2
-                  exit 1
-              fi
-          '';
-
-          run_on = host: cmd: ''
-            ${if host == null then "sudo" else "ssh $NIX_SSHOPTS \"${host}\""} ${cmd}
-          '';
-
-        in pkgs.writeScript "nixos-deploy-${name}" ''
-          #!${pkgs.bash}/bin/bash
-          set -e
-          export NIX_SSHOPTS="${config.deployment.ssh_options}"
-
-          if [ -n "$sshMultiplexing" ]; then
-              tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
-              # TODO: split SSHOPTS into build/target ssh opts
-              NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
-
-              cleanup() {
-                  for ctrl in "$tmpDir"/ssh-*; do
-                      ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
-                  done
-                  rm -rf "$tmpDir"
-              }
-              trap cleanup EXIT
-          fi
-
-
-          ${if fast == false then ''
-            echo "Building Nix..."
-            outPaths=($(${remote_build "$CONFIG_EXPR.nix.package.out"}))
-            remotePath=
-            for p in "${"$"}{outPaths[@]}"; do
-                remotePath="$p/bin:$remotePath"
-            done
-          '' else ""}
-
-          echo "Building system..."
-          ${let host = if action == "build-image" || action == "install"
-              then provision_host else target_host;
-          in if host == null then ''
-            script="$(${remote_build "$BASE_CONFIG_EXPR.stage3 \\\"${name}\\\" \\\"${action}\\\""})"
-            ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
-            sudo $script
-          '' else ''
-            script="$(${remote_build "$BASE_CONFIG_EXPR.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
-            ${run_on build_host ''"$script"''}
-          ''}
-        '';
-      };
     };
   };
 
@@ -220,9 +137,95 @@ rec {
         ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
           export CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
-          ${nodesBuilt.${node}.deployment.internal.script action fast}
+          ${stage1_script node action fast}
         '') nodes_filtered)}
       '';
+
+  stage1_script = name: action: fast: let
+      config = nodesBuilt.${name};
+      pkgs = config._module.args.pkgs;
+      lib = config._module.args.pkgs.lib;
+
+      build_host = config.deployment.buildHost;
+      target_host = config.deployment.targetHost;
+      provision_host = config.deployment.provisionHost;
+
+      default = d: x: if x == null then d else x;
+
+      remote_build = expr: let
+          run_on_build_host = force_deft_path: cmd:
+            if build_host == null then
+              cmd
+            else if fast || force_deft_path then
+              ''ssh $NIX_SSHOPTS "${build_host}" ${cmd}''
+            else
+              ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
+
+        in pkgs.writeScript "remote-build-${name}" ''
+          #!${pkgs.bash}/bin/bash
+          export NIX_SSHOPTS
+          set -e
+
+          drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
+          if [ -a "$drv" ]; then
+              ${lib.optionalString (build_host != null)
+                ''nix-copy-closure --to "${build_host}" "$drv"''
+              }
+              outPaths=($(${run_on_build_host true ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
+
+              echo "${"$"}{outPaths[@]}"
+          else
+              echo "nix-instantiate failed" >&2
+              exit 1
+          fi
+      '';
+
+      run_on = host: cmd: ''
+        ${if host == null then "sudo" else "ssh $NIX_SSHOPTS \"${host}\""} ${cmd}
+      '';
+
+    in pkgs.writeScript "nixos-deploy-${name}" ''
+      #!${pkgs.bash}/bin/bash
+      set -e
+      export NIX_SSHOPTS="${config.deployment.ssh_options}"
+
+      if [ -n "$sshMultiplexing" ]; then
+          tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
+          # TODO: split SSHOPTS into build/target ssh opts
+          NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
+
+          cleanup() {
+              for ctrl in "$tmpDir"/ssh-*; do
+                  ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
+              done
+              rm -rf "$tmpDir"
+          }
+          trap cleanup EXIT
+      fi
+
+
+      ${if fast == false then ''
+        echo "Building Nix..."
+        outPaths=($(${remote_build "$CONFIG_EXPR.nix.package.out"}))
+        remotePath=
+        for p in "${"$"}{outPaths[@]}"; do
+            remotePath="$p/bin:$remotePath"
+        done
+      '' else ""}
+
+      echo "Building system..."
+      ${let host = if action == "build-image" || action == "install"
+          then provision_host else target_host;
+      in if host == null then ''
+        script="$(${remote_build "$BASE_CONFIG_EXPR.stage3 \\\"${name}\\\" \\\"${action}\\\""})"
+        ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
+        sudo $script
+      '' else ''
+        script="$(${remote_build "$BASE_CONFIG_EXPR.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
+        ${run_on build_host ''"$script"''}
+      ''}
+    '';
+
 
   stage2 = current_host: target_node: target_host: action:
     local_pkgs.writeScript "nixos-${target_node}-stage2"''
