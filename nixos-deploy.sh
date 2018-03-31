@@ -72,21 +72,7 @@ if [ ${#arguments[@]} -ne 1 ]; then
     exit 1
 fi
 
-if [ ${#hosts[@]} -eq 0 ]; then
-    showSyntax
-    exit 1
-fi
-
 action="${arguments[0]}"
-
-case "$action" in
-    switch|boot|test|build|dry-build|dry-activate|build-image|install)
-        ;;
-    *)
-        echo "$SCRIPT_NAME: unknown action '$action'"
-        exit 1
-        ;;
-esac
 
 if [[ "$hostsFile" != /* ]]; then
     hostsFile="$PWD/$hostsFile"
@@ -94,6 +80,11 @@ fi
 
 if [ ! -f "$hostsFile" ]; then
     echo "$SCRIPT_NAME: file '$hostsFile' does not exist"
+    exit 1
+fi
+
+if [ ${#hosts[@]} -eq 0 ]; then
+    showSyntax
     exit 1
 fi
 

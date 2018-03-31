@@ -74,6 +74,59 @@ let
     };
   };
 
+
+  deployCommands = let
+    activate = action: { pkgs, lib, config, name, ... }: let
+        cfg = config.system.build.toplevel;
+      in pkgs.writeScript "nixos-${action}-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        action="${action}"
+        pathToConfig="${cfg}"
+
+        echo "Activating configuration..."
+        if [ "$action" = switch -o "$action" = boot ]; then
+            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+        fi
+        "$pathToConfig/bin/switch-to-configuration" "$action"
+      '';
+
+  in {
+    switch = activate "switch";
+    boot = activate "boot";
+    test = activate "test";
+    dry-activate = activate "dry-activate";
+
+    build-image = { pkgs, lib, config, name, ... }: let
+        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix" ({
+          inherit pkgs lib config;
+        } // config.deployment.imageOptions);
+      in pkgs.writeScript "nixos-image-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        ${if config.deployment.imagePath == null
+        then "echo ${image}"
+        else ''
+          if [ ! -f "${config.deployment.imagePath}" ]; then
+            cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
+            chmod 640 "${config.deployment.imagePath}"
+            echo "Image has been copied to ${config.deployment.imagePath}"
+          else
+            echo "File ${config.deployment.imagePath} already exists ! Aborting."
+            exit 1
+          fi
+        ''}
+      '';
+
+    install = { pkgs, lib, config, name, ... }: let
+        nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
+          inherit pkgs lib config; modulesPath = null;
+        }).config.system.build.nixos-install;
+      in pkgs.writeScript "nixos-install-${name}" ''
+        #!${pkgs.bash}/bin/bash
+        ${nixos-install}/bin/nixos-install --closure ${config.system.build.toplevel} "$@"
+      '';
+  };
+
+
   overrideNixosConf = { name, config, pkgs, lib, ... }: {
     options = {
       overrideNixosPath = lib.mkOption {
@@ -85,7 +138,6 @@ let
       };
     };
   };
-
 
   buildNixOSSystem = configuration:
     let impureLightConfig = (import <nixos/nixos/lib/eval-config.nix> {
@@ -129,7 +181,13 @@ rec {
           (builtins.attrNames nodesBuilt)
         else nodes;
 
-      in local_pkgs.writeScript "nixos-deploy-stage1" ''
+    in if !deployCommands?${action}
+      then local_pkgs.writeScript "unknown-action" ''
+          #!${local_pkgs.bash}/bin/bash
+          echo "Error: unknown action '${action}'"
+          exit 1
+        ''
+      else local_pkgs.writeScript "nixos-deploy-stage1" ''
         #!${local_pkgs.bash}/bin/bash
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
         export BASE_CONFIG_EXPR
@@ -239,57 +297,13 @@ rec {
       ''}
   '';
 
-  stage3 = name: action: let
+  stage3 = name: action:
+    deployCommands.${action} rec {
+      inherit name;
       config = nodesBuilt.${name};
       pkgs = config._module.args.pkgs;
-      lib = config._module.args.pkgs.lib;
-
-      activate = let
-        cfg = config.system.build.toplevel;
-      in pkgs.writeScript "nixos-activate-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        action="${action}"
-        pathToConfig="${cfg}"
-
-        echo "Activating configuration..."
-        if [ "$action" = switch -o "$action" = boot ]; then
-            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-        fi
-        "$pathToConfig/bin/switch-to-configuration" "$action"
-      '';
-
-      build-image = let
-        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix" ({
-          inherit pkgs lib config;
-        } // config.deployment.imageOptions);
-      in pkgs.writeScript "nixos-image-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        ${if config.deployment.imagePath == null
-        then "echo ${image}"
-        else ''
-          if [ ! -f "${config.deployment.imagePath}" ]; then
-            cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
-            chmod 640 "${config.deployment.imagePath}"
-            echo "Image has been copied to ${config.deployment.imagePath}"
-          else
-            echo "File ${config.deployment.imagePath} already exists ! Aborting."
-            exit 1
-          fi
-        ''}
-      '';
-
-      nixos-install = let
-        nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
-          inherit pkgs lib config; modulesPath = null;
-        }).config.system.build.nixos-install;
-      in pkgs.writeScript "nixos-install-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        ${nixos-install}/bin/nixos-install --closure ${config.system.build.toplevel} "$@"
-      '';
-
-    in if action == "build-image" then build-image
-      else if action == "install" then nixos-install
-      else activate;
+      lib = pkgs.lib;
+    };
 
 }
 
