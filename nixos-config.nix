@@ -1,8 +1,8 @@
 hostsFile:
 
 let
-  pkgs = (import <nixos> {});
-  lib = pkgs.lib;
+  local_pkgs = (import <nixos> {});
+  local_lib = local_pkgs.lib;
 
   deploymentConf = { name, nodes, config, pkgs, lib, ... }: {
     options = {
@@ -179,12 +179,15 @@ let
         nixosPath = if impureLightConfig.overrideNixosPath != null
           then "${impureLightConfig.overrideNixosPath}/nixos"
           else <nixos/nixos>;
-    in (import nixosPath { inherit configuration; }).config;
+    in (import nixosPath { configuration = {
+          imports = [ configuration ];
+          deployment.internal.nixosPath = nixosPath;
+        }; }).config;
 
 
   nodes = import hostsFile;
 
-  nodesBuilt = lib.mapAttrs (host: conf: buildNixOSSystem {
+  nodesBuilt = local_lib.mapAttrs (host: conf: buildNixOSSystem {
     imports = [
       deploymentConf
       overrideNixosConf
@@ -204,17 +207,17 @@ rec {
   stage1 = action: hosts_json: fast: let
       nodes = builtins.fromJSON hosts_json;
       nodes_filtered = if nodes == []
-        then lib.filter
+        then local_lib.filter
           (node: nodesBuilt.${node}.deployment.includeInAll)
           (builtins.attrNames nodesBuilt)
         else nodes;
 
-      in pkgs.writeScript "nixos-deploy-stage1" ''
-        #!${pkgs.bash}/bin/bash
+      in local_pkgs.writeScript "nixos-deploy-stage1" ''
+        #!${local_pkgs.bash}/bin/bash
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
         export BASE_CONFIG_EXPR
 
-        ${(lib.concatMapStringsSep "\necho\n" (node: ''
+        ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
           export CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
           ${nodesBuilt.${node}.deployment.internal.script action fast}
@@ -222,8 +225,8 @@ rec {
       '';
 
   stage2 = current_host: target_node: target_host: action:
-    pkgs.writeScript "nixos-${target_node}-stage2"''
-      #!${pkgs.bash}/bin/bash
+    local_pkgs.writeScript "nixos-${target_node}-stage2"''
+      #!${local_pkgs.bash}/bin/bash
       drv="${stage3 target_node action}"
       ${if target_host != current_host then ''
         nix-copy-closure --to "${target_host}" "$drv"
@@ -235,6 +238,8 @@ rec {
 
   stage3 = name: action: let
       config = nodesBuilt.${name};
+      pkgs = config._module.args.pkgs;
+      lib = config._module.args.pkgs.lib;
 
       activate = let
         cfg = config.system.build.toplevel;
@@ -251,7 +256,7 @@ rec {
       '';
 
       build-image = let
-        image = import <nixos/nixos/lib/make-disk-image.nix> ({
+        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix" ({
           inherit pkgs lib config;
         } // config.deployment.imageOptions);
       in pkgs.writeScript "nixos-image-${name}" ''
@@ -271,7 +276,7 @@ rec {
       '';
 
       nixos-install = let
-        nixos-install = (import <nixos/nixos/modules/installer/tools/tools.nix> {
+        nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
           inherit pkgs lib config; modulesPath = null;
         }).config.system.build.nixos-install;
       in pkgs.writeScript "nixos-install-${name}" ''
