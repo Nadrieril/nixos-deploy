@@ -101,7 +101,7 @@ if [[ "$hosts" == "all" ]]; then
     hosts=();
 fi
 
-hosts_list="$(python -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "${hosts[@]}")"
+hosts_list="$(python -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
 
 export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
