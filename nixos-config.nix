@@ -207,14 +207,14 @@ rec {
 
       default = d: x: if x == null then d else x;
 
-      remote_build = expr: let
-          run_on_build_host = force_deft_path: cmd: let
-              exec_prefix = lib.optionalString (build_host != null)
-                              ''ssh $NIX_SSHOPTS "${build_host}" '';
-            in if fast || force_deft_path then
-              ''${exec_prefix}${cmd}''
+      remote_build = set_remote_path: expr: let
+          run_prefix = lib.optionalString (build_host != null)
+                          ''ssh $NIX_SSHOPTS "${build_host}" '';
+          run_on_build_host = cmd: let
+            in if fast || !set_remote_path then
+              ''${run_prefix}${cmd}''
             else
-              ''${exec_prefix}PATH="$remotePath" ${cmd}'';
+              ''${run_prefix}PATH="$remotePath" ${cmd}'';
 
         in pkgs.writeScript "remote-build-${name}" ''
           #!${pkgs.bash}/bin/bash
@@ -226,7 +226,7 @@ rec {
               ${lib.optionalString (build_host != null)
                 ''nix-copy-closure --to "${build_host}" "$drv"''
               }
-              outPaths=($(${run_on_build_host true ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
+              outPaths=($(${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
 
               echo "${"$"}{outPaths[@]}"
           else
@@ -255,17 +255,17 @@ rec {
       fi
 
 
-      ${if fast == false then ''
+      ${lib.optionalString (fast == false) ''
         echo "Building Nix..."
-        outPaths=($(${remote_build "$BASE_CONFIG_EXPR.nodes.${name}.nix.package.out"}))
+        outPaths=($(${remote_build false "$BASE_CONFIG_EXPR.nodes.${name}.nix.package.out"}))
         remotePath=
         for p in "${"$"}{outPaths[@]}"; do
             remotePath="$p/bin:$remotePath"
         done
-      '' else ""}
+      ''}
 
       echo "Building system..."
-      cmd="$(${remote_build ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
+      cmd="$(${remote_build true ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
       ${let host = if action == "build-image" || action == "install"
           then provision_host else target_host;
       in if host == null && build_host == null then ''
