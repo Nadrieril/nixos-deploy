@@ -208,13 +208,13 @@ rec {
       default = d: x: if x == null then d else x;
 
       remote_build = expr: let
-          run_on_build_host = force_deft_path: cmd:
-            if build_host == null then
-              cmd
-            else if fast || force_deft_path then
-              ''ssh $NIX_SSHOPTS "${build_host}" ${cmd}''
+          run_on_build_host = force_deft_path: cmd: let
+              exec_prefix = lib.optionalString (build_host != null)
+                              ''ssh $NIX_SSHOPTS "${build_host}" '';
+            in if fast || force_deft_path then
+              ''${exec_prefix}${cmd}''
             else
-              ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
+              ''${exec_prefix}PATH="$remotePath" ${cmd}'';
 
         in pkgs.writeScript "remote-build-${name}" ''
           #!${pkgs.bash}/bin/bash
