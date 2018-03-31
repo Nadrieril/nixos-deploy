@@ -226,9 +226,11 @@ rec {
               ${lib.optionalString (build_host != null)
                 ''nix-copy-closure --to "${build_host}" "$drv"''
               }
-              outPaths=($(${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''}))
+              ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
 
-              echo "${"$"}{outPaths[@]}"
+              # Get only the main path
+              ${run_on_build_host ''nix-store -q --outputs "$drv"''} | tail -1
+
           else
               echo "nix-instantiate failed" >&2
               exit 1
@@ -257,11 +259,9 @@ rec {
 
       ${lib.optionalString (fast == false) ''
         echo "Building Nix..."
-        outPaths=($(${remote_build false "$BASE_CONFIG_EXPR.nodes.${name}.nix.package.out"}))
-        remotePath=
-        for p in "${"$"}{outPaths[@]}"; do
-            remotePath="$p/bin:$remotePath"
-        done
+        outPath="$(${remote_build false "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
+        remotePath="$outPath/bin"
+        export remotePath
       ''}
 
       echo "Building system..."
