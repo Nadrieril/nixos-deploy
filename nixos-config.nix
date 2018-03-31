@@ -89,8 +89,10 @@ let
                 else
                   ''ssh $NIX_SSHOPTS "${build_host}" PATH="$remotePath" ${cmd}'';
 
-            in ''
+            in pkgs.writeScript "remote-build-${name}" ''
+              #!${pkgs.bash}/bin/bash
               export NIX_SSHOPTS
+              set -e
 
               drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
               if [ -a "$drv" ]; then
@@ -112,6 +114,7 @@ let
 
         in pkgs.writeScript "nixos-deploy-${name}" ''
           #!${pkgs.bash}/bin/bash
+          set -e
           export NIX_SSHOPTS="${config.deployment.ssh_options}"
 
           if [ -n "$sshMultiplexing" ]; then
