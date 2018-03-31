@@ -76,17 +76,21 @@ let
 
 
   deployCommands = let
-    activate = action: { pkgs, lib, config, name, ... }:
-      pkgs.writeScript "nixos-${action}-${name}" ''
-        #!${pkgs.bash}/bin/bash
-        pathToConfig="${config.system.build.toplevel}"
+    activate = action: {
+      host = "target";
 
-        echo "Activating configuration..."
-        ${lib.optionalString (action == "switch" || action == "boot") ''
-          nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-        ''}
-        "$pathToConfig/bin/switch-to-configuration" "${action}"
-      '';
+      cmd = { pkgs, lib, config, name, ... }:
+        pkgs.writeScript "nixos-${action}-${name}" ''
+          #!${pkgs.bash}/bin/bash
+          pathToConfig="${config.system.build.toplevel}"
+
+          echo "Activating configuration..."
+          ${lib.optionalString (action == "switch" || action == "boot") ''
+            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+          ''}
+          "$pathToConfig/bin/switch-to-configuration" "${action}"
+        '';
+    };
 
   in {
     switch = activate "switch";
@@ -94,7 +98,8 @@ let
     test = activate "test";
     dry-activate = activate "dry-activate";
 
-    build-image = { pkgs, lib, config, name, ... }: let
+    build-image.host = "provision";
+    build-image.cmd = { pkgs, lib, config, name, ... }: let
         image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
                   ({ inherit pkgs lib config; } // config.deployment.imageOptions);
         imgPath = config.deployment.imagePath;
@@ -114,7 +119,8 @@ let
         ''}
       '';
 
-    install = { pkgs, lib, config, name, ... }: let
+    install.host = "provision";
+    install.cmd = { pkgs, lib, config, name, ... }: let
         nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
           inherit pkgs lib config; modulesPath = null;
         }).config.system.build.nixos-install;
@@ -202,8 +208,9 @@ rec {
       lib = config._module.args.pkgs.lib;
 
       build_host = config.deployment.buildHost;
-      target_host = config.deployment.targetHost;
-      provision_host = config.deployment.provisionHost;
+      target_host = if deployCommands.${action}.host == "target"
+          then config.deployment.targetHost
+          else config.deployment.provisionHost;
 
       default = d: x: if x == null then d else x;
 
@@ -266,26 +273,25 @@ rec {
 
       echo "Building system..."
       cmd="$(${remote_build true ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
-      ${let host = if action == "build-image" || action == "install"
-          then provision_host else target_host;
-      in if host == null && build_host == null then ''
+
+      ${if target_host == null && build_host == null then ''
         sudo "$cmd"
-      '' else if host == null then ''
+      '' else if target_host == null then ''
         sudo nix-copy-closure --from "${build_host}" "$cmd"
         sudo "$cmd"
       '' else if build_host == null then ''
-        nix-copy-closure --to "${host}" "$cmd"
-        ssh "${host}" "$cmd"
-      '' else if build_host == host then ''
+        nix-copy-closure --to "${target_host}" "$cmd"
+        ssh "${target_host}" "$cmd"
+      '' else if build_host == target_host then ''
         ssh $NIX_SSHOPTS "${build_host}" "$cmd"
       '' else ''
-        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${host}" "$cmd"
-        ssh $NIX_SSHOPTS "${build_host}" ssh "${host}" "$cmd"
+        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
+        ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
       ''}
     '';
 
   deployCommand = name: action:
-    deployCommands.${action} rec {
+    deployCommands.${action}.cmd rec {
       inherit name;
       config = nodesBuilt.${name};
       pkgs = config._module.args.pkgs;
