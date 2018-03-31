@@ -219,20 +219,21 @@ rec {
       default = d: x: if x == null then d else x;
 
       remote_build = set_remote_path: expr: let
-          run_prefix = lib.optionalString (build_host != null)
-                          ''ssh $NIX_SSHOPTS "${build_host}" '';
-          run_on_build_host = cmd: let
-            in if fast || !set_remote_path then
-              ''${run_prefix}${cmd}''
-            else
-              ''${run_prefix}PATH="$remotePath" ${cmd}'';
+          build_host_prefix =
+            lib.optionalString (build_host != null)
+                ''ssh $NIX_SSHOPTS "${build_host}"'';
+          path_prefix =
+            lib.optionalString (set_remote_path && !fast)
+                ''PATH="$remotePath"'';
+          run_on_build_host = cmd:
+              ''${build_host_prefix} ${path_prefix} ${cmd}'';
 
         in pkgs.writeScript "remote-build-${name}" ''
           #!${pkgs.bash}/bin/bash
           export NIX_SSHOPTS
           set -e
 
-          drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
+          drv="$(${path_prefix} nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
           if [ -a "$drv" ]; then
               ${lib.optionalString (build_host != null)
                 ''nix-copy-closure --to "${build_host}" "$drv"''
