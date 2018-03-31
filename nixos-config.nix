@@ -78,6 +78,7 @@ let
   deployCommands = let
     activate = action: {
       host = "target";
+      needsRoot = action != "dry-activate";
 
       cmd = { pkgs, lib, config, name, ... }:
         pkgs.writeScript "nixos-${action}-${name}" ''
@@ -99,6 +100,7 @@ let
     dry-activate = activate "dry-activate";
 
     build-image.host = "provision";
+    build-image.needsRoot = true;
     build-image.cmd = { pkgs, lib, config, name, ... }: let
         image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
                   ({ inherit pkgs lib config; } // config.deployment.imageOptions);
@@ -120,6 +122,7 @@ let
       '';
 
     install.host = "provision";
+    install.needsRoot = true;
     install.cmd = { pkgs, lib, config, name, ... }: let
         nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
           inherit pkgs lib config; modulesPath = null;
@@ -207,8 +210,9 @@ rec {
       pkgs = config._module.args.pkgs;
       lib = config._module.args.pkgs.lib;
 
+      cmd = deployCommands.${action};
       build_host = config.deployment.buildHost;
-      target_host = if deployCommands.${action}.host == "target"
+      target_host = if cmd.host == "target"
           then config.deployment.targetHost
           else config.deployment.provisionHost;
 
@@ -275,10 +279,10 @@ rec {
       cmd="$(${remote_build true ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
 
       ${if target_host == null && build_host == null then ''
-        sudo "$cmd"
+        ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
       '' else if target_host == null then ''
         sudo nix-copy-closure --from "${build_host}" "$cmd"
-        sudo "$cmd"
+        ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
       '' else if build_host == null then ''
         nix-copy-closure --to "${target_host}" "$cmd"
         ssh "${target_host}" "$cmd"
