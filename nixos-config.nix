@@ -265,34 +265,26 @@ rec {
       '' else ""}
 
       echo "Building system..."
+      cmd="$(${remote_build ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
       ${let host = if action == "build-image" || action == "install"
           then provision_host else target_host;
-      in if host == null then ''
-        script="$(${remote_build ''$BASE_CONFIG_EXPR.stage3 \"${name}\" \"${action}\"''})"
-        ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
-        sudo "$script"
+      in if host == null && build_host == null then ''
+        sudo "$cmd"
+      '' else if host == null then ''
+        sudo nix-copy-closure --from "${build_host}" "$cmd"
+        sudo "$cmd"
+      '' else if build_host == null then ''
+        nix-copy-closure --to "${host}" "$cmd"
+        ssh "${host}" "$cmd"
+      '' else if build_host == host then ''
+        ssh $NIX_SSHOPTS "${build_host}" "$cmd"
       '' else ''
-        script="$(${remote_build ''$BASE_CONFIG_EXPR.stage2 \"${build_host}\" \"${name}\" \"${host}\" \"${action}\"''})"
-        ${if build_host == null
-          then ''sudo "$script"''
-          else ''ssh $NIX_SSHOPTS "${build_host}" "$script"''}
+        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${host}" "$cmd"
+        ssh $NIX_SSHOPTS "${build_host}" ssh "${host}" "$cmd"
       ''}
     '';
 
-
-  stage2 = current_host: target_node: target_host: action:
-    local_pkgs.writeScript "nixos-${target_node}-stage2"''
-      #!${local_pkgs.bash}/bin/bash
-      drv="${stage3 target_node action}"
-      ${if target_host != current_host then ''
-        nix-copy-closure --to "${target_host}" "$drv"
-        ssh "${target_host}" "$drv"
-      '' else ''
-        $drv
-      ''}
-  '';
-
-  stage3 = name: action:
+  deployCommand = name: action:
     deployCommands.${action} rec {
       inherit name;
       config = nodesBuilt.${name};
