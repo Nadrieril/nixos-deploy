@@ -76,18 +76,16 @@ let
 
 
   deployCommands = let
-    activate = action: { pkgs, lib, config, name, ... }: let
-        cfg = config.system.build.toplevel;
-      in pkgs.writeScript "nixos-${action}-${name}" ''
+    activate = action: { pkgs, lib, config, name, ... }:
+      pkgs.writeScript "nixos-${action}-${name}" ''
         #!${pkgs.bash}/bin/bash
-        action="${action}"
-        pathToConfig="${cfg}"
+        pathToConfig="${config.system.build.toplevel}"
 
         echo "Activating configuration..."
-        if [ "$action" = switch -o "$action" = boot ]; then
-            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-        fi
-        "$pathToConfig/bin/switch-to-configuration" "$action"
+        ${lib.optionalString (action == "switch" || action == "boot") ''
+          nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+        ''}
+        "$pathToConfig/bin/switch-to-configuration" "${action}"
       '';
 
   in {
@@ -97,20 +95,20 @@ let
     dry-activate = activate "dry-activate";
 
     build-image = { pkgs, lib, config, name, ... }: let
-        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix" ({
-          inherit pkgs lib config;
-        } // config.deployment.imageOptions);
+        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
+                  ({ inherit pkgs lib config; } // config.deployment.imageOptions);
+        imgPath = config.deployment.imagePath;
       in pkgs.writeScript "nixos-image-${name}" ''
         #!${pkgs.bash}/bin/bash
-        ${if config.deployment.imagePath == null
+        ${if imgPath == null
         then "echo ${image}"
         else ''
-          if [ ! -f "${config.deployment.imagePath}" ]; then
-            cp "${image}/nixos.qcow2" "${config.deployment.imagePath}"
-            chmod 640 "${config.deployment.imagePath}"
-            echo "Image has been copied to ${config.deployment.imagePath}"
+          if [ ! -f "${imgPath}" ]; then
+            cp "${image}/nixos.qcow2" "${imgPath}"
+            chmod 640 "${imgPath}"
+            echo "Image has been copied to ${imgPath}"
           else
-            echo "File ${config.deployment.imagePath} already exists ! Aborting."
+            echo "File ${imgPath} already exists ! Aborting."
             exit 1
           fi
         ''}
@@ -194,7 +192,6 @@ rec {
 
         ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
-          export CONFIG_EXPR="$BASE_CONFIG_EXPR.nodes.${node}"
           ${stage1_script node action fast}
         '') nodes_filtered)}
       '';
@@ -238,10 +235,6 @@ rec {
           fi
       '';
 
-      run_on = host: cmd: ''
-        ${if host == null then "sudo" else "ssh $NIX_SSHOPTS \"${host}\""} ${cmd}
-      '';
-
     in pkgs.writeScript "nixos-deploy-${name}" ''
       #!${pkgs.bash}/bin/bash
       set -e
@@ -264,7 +257,7 @@ rec {
 
       ${if fast == false then ''
         echo "Building Nix..."
-        outPaths=($(${remote_build "$CONFIG_EXPR.nix.package.out"}))
+        outPaths=($(${remote_build "$BASE_CONFIG_EXPR.nodes.${name}.nix.package.out"}))
         remotePath=
         for p in "${"$"}{outPaths[@]}"; do
             remotePath="$p/bin:$remotePath"
@@ -275,12 +268,14 @@ rec {
       ${let host = if action == "build-image" || action == "install"
           then provision_host else target_host;
       in if host == null then ''
-        script="$(${remote_build "$BASE_CONFIG_EXPR.stage3 \\\"${name}\\\" \\\"${action}\\\""})"
+        script="$(${remote_build ''$BASE_CONFIG_EXPR.stage3 \"${name}\" \"${action}\"''})"
         ${lib.optionalString (build_host != null) ''nix-copy-closure --from "${build_host}" "$script"''}
-        sudo $script
+        sudo "$script"
       '' else ''
-        script="$(${remote_build "$BASE_CONFIG_EXPR.stage2 \\\"${build_host}\\\" \\\"${name}\\\" \\\"${host}\\\" \\\"${action}\\\""})"
-        ${run_on build_host ''"$script"''}
+        script="$(${remote_build ''$BASE_CONFIG_EXPR.stage2 \"${build_host}\" \"${name}\" \"${host}\" \"${action}\"''})"
+        ${if build_host == null
+          then ''sudo "$script"''
+          else ''ssh $NIX_SSHOPTS "${build_host}" "$script"''}
       ''}
     '';
 
