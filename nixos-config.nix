@@ -105,7 +105,10 @@ let
       stopsAt = "build";
       needsRoot = false;
       cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-build-${node}" "";
+        pkgs.writeScript "nixos-build-${node}" ''
+          #!${pkgs.bash}/bin/bash
+          echo "${config.system.build.toplevel}"
+        '';
     };
 
     build-image.host = "provision";
