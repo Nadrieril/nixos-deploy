@@ -188,6 +188,21 @@ rec {
           (builtins.attrNames nodesBuilt)
         else nodes;
 
+      instanciate_to_array = expr: ''
+        declare -A drvs
+
+        ${(local_lib.concatMapStringsSep "\n" (node: ''
+          drv="$(nix-instantiate --expr "${expr node}" "${"$"}{extraInstantiateFlags[@]}")"
+          if [ -z "$drv" ]; then
+              echo "nix-instantiate failed for node ${node}" >&2
+              exit 1
+          fi
+          drvs["${node}"]="$drv"
+        '') nodes_filtered)}
+
+        declare -p drvs
+      '';
+
     in if !deployCommands?${action}
       then local_pkgs.writeScript "unknown-action" ''
           #!${local_pkgs.bash}/bin/bash
@@ -196,8 +211,20 @@ rec {
         ''
       else local_pkgs.writeScript "nixos-deploy-stage1" ''
         #!${local_pkgs.bash}/bin/bash
+        set -e
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
         export BASE_CONFIG_EXPR
+
+
+        echo "Instanciating..."
+        ${local_lib.optionalString (!fast) ''
+          nix_drvs="$(${instanciate_to_array
+              (node: "$BASE_CONFIG_EXPR.nodes.${node}.nix.package")})"
+          export nix_drvs
+        ''}
+        system_drvs="$(${instanciate_to_array
+            (node: ''$BASE_CONFIG_EXPR.deployCommand \"${node}\" \"${action}\"'')})"
+        export system_drvs
 
         ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
@@ -225,29 +252,21 @@ rec {
           path_prefix =
             lib.optionalString (!building_nix && !fast)
                 ''PATH="$remotePath"'';
-          run_on_build_host = cmd:
-              ''${build_host_prefix} ${path_prefix} ${cmd}'';
 
         in pkgs.writeScript "remote-build-${name}" ''
           #!${pkgs.bash}/bin/bash
-          export NIX_SSHOPTS
           set -e
+          export NIX_SSHOPTS
+          drv="$1"
 
-          drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
-          if [ -a "$drv" ]; then
-              ${lib.optionalString (build_host != null) ''
-                nix-copy-closure --to "${build_host}" "$drv"
-              ''}
+          ${lib.optionalString (build_host != null) ''
+            nix-copy-closure --to "${build_host}" "$drv"
+          ''}
 
-              ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
+          ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" > /dev/null
 
-              # Get only the main path
-              nix-store -q --outputs "$drv" | tail -1
-
-          else
-              echo "nix-instantiate failed" >&2
-              exit 1
-          fi
+          # Get only the main path
+          nix-store -q --outputs "$drv" | tail -1
       '';
 
     in pkgs.writeScript "nixos-deploy-${name}" ''
@@ -272,13 +291,17 @@ rec {
 
       ${lib.optionalString (!fast) ''
         echo "Building Nix..." >&2
-        outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
+        eval "$nix_drvs"
+        drv=''${drvs["${name}"]}
+        outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"} "$drv")"
         remotePath="$outPath/bin"
         export remotePath
       ''}
 
       echo "Building system..."
-      cmd="$(${remote_build false ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
+      eval "$system_drvs"
+      drv=''${drvs["${name}"]}
+      cmd="$(${remote_build false ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''} "$drv")"
 
       ${if target_host == null && build_host == null then ''
         ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
