@@ -14,6 +14,7 @@ with pkgs; stdenv.mkDerivation {
     # script patcher:
     sed -i "s:python:${python}/bin/python:g" nixos-deploy.sh
     sed -i "s:nix-build:${nix}/bin/nix-build:g" nixos-deploy.sh
+    sed -i "s:jq:${jq}/bin/jq:g" nixos-deploy.sh
  '';
 
   installPhase = ''
