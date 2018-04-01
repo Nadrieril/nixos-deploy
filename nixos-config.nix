@@ -187,14 +187,13 @@ let
             else config.deployment.provisionHost;
       in ''
         cmd=''${cmds["${name}"]}
-        ${if target_host == null && build_host == null then ''
-        '' else if target_host == null then ''
-          sudo nix-copy-closure --from "${build_host}" "$cmd"
-        '' else if build_host == null then ''
+        ${if build_host == null && target_host != null then ''
           nix-copy-closure --to "${target_host}" "$cmd"
-        '' else if build_host == target_host then ''
-        '' else ''
+        '' else if build_host != null && target_host == null then ''
+          sudo nix-copy-closure --from "${build_host}" "$cmd"
+        '' else if build_host != null && build_host != target_host then ''
           ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
+        '' else ''
         ''}
       '';
 
@@ -204,14 +203,10 @@ let
             else config.deployment.provisionHost;
       in ''
         cmd=''${cmds["${name}"]}
-        ${if target_host == null && build_host == null then ''
+        ${if target_host == null then ''
           ${lib.optionalString action.needsRoot "sudo "}"$cmd"
-        '' else if target_host == null then ''
-          ${lib.optionalString action.needsRoot "sudo "}"$cmd"
-        '' else if build_host == null then ''
-          ssh "${target_host}" "$cmd"
-        '' else if build_host == target_host then ''
-          ssh $NIX_SSHOPTS "${build_host}" "$cmd"
+        '' else if build_host == null || build_host == target_host then ''
+          ssh $NIX_SSHOPTS "${target_host}" "$cmd"
         '' else ''
           ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
         ''}
