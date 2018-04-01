@@ -173,6 +173,7 @@ let
 
         root="$tmpDir/inst-${if nix then "nix" else "system"}"
         drv="$(nix-instantiate --expr "${expr}" --indirect --add-root "$root" "${"$"}{extraInstantiateFlags[@]}")"
+        drv="$(readlink -f "$drv")"
         if [ -z "$drv" ]; then
           echo "nix-instantiate failed for node ${node}" >&2
           exit 1
