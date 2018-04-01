@@ -78,6 +78,7 @@ let
   deployCommands = let
     activate = action: {
       host = "target";
+      stopsAt = null;
       needsRoot = action != "dry-activate";
 
       cmd = { pkgs, lib, config, node, ... }:
@@ -99,7 +100,16 @@ let
     test = activate "test";
     dry-activate = activate "dry-activate";
 
+    build = {
+      host = "build";
+      stopsAt = "build";
+      needsRoot = false;
+      cmd = { pkgs, lib, config, node, ... }:
+        pkgs.writeScript "nixos-build-${node}" "";
+    };
+
     build-image.host = "provision";
+    build-image.stopsAt = null;
     build-image.needsRoot = true;
     build-image.cmd = { pkgs, lib, config, node, ... }: let
         image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
@@ -122,6 +132,7 @@ let
       '';
 
     install.host = "provision";
+    install.stopsAt = null;
     install.needsRoot = true;
     install.cmd = { pkgs, lib, config, node, ... }: let
         nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
@@ -199,10 +210,12 @@ let
         ''}
       '';
 
-    deploy = args: with args; let
+    execAction = args: with args; let
         target_host = if action.host == "target"
             then config.deployment.targetHost
-            else config.deployment.provisionHost;
+            else if action.host == "provision"
+            then config.deployment.provisionHost
+            else config.deployment.buildHost;
       in ''
         echo "Deploying..." >&2
         cmd=''${cmds["${node}"]}
@@ -227,8 +240,10 @@ let
         (optional (args.build_host != null) (upload false))
         (optional (!fast) (build true))
         (build false)
+      ] ++ (local_lib.optionals (action.stopsAt != "build") [
         copy
-        deploy
+      ]) ++ [
+        execAction
       ];
       args = rec {
         inherit node fast action;
