@@ -171,7 +171,8 @@ let
         echo "Instantiating ${if nix then "nix" else "system"}..." >&2
         declare -A ${arr}
 
-        drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
+        root="$tmpDir/inst-${if nix then "nix" else "system"}"
+        drv="$(nix-instantiate --expr "${expr}" --indirect --add-root "$root" "${"$"}{extraInstantiateFlags[@]}")"
         if [ -z "$drv" ]; then
           echo "nix-instantiate failed for node ${node}" >&2
           exit 1
@@ -196,7 +197,8 @@ let
       in ''
         echo "Building ${if nix then "nix" else "system"}..." >&2
         drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
-        ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" > /dev/null
+        ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" \
+            2>&1 > /dev/null | ( grep -v -- "--add-root" || true )
         ${if nix then ''
           outPath="$(nix-store -q --outputs "$drv" | tail -1)"
           remotePath="$outPath/bin"
