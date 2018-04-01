@@ -223,7 +223,7 @@ rec {
         fi
 
 
-        echo "Instanciating..."
+        echo "Instantiating..."
         ${local_lib.optionalString (!fast) ''
           nix_drvs="$(${instanciate_to_array
               (node: "$BASE_CONFIG_EXPR.nodes.${node}.nix.package")})"
@@ -232,10 +232,23 @@ rec {
         system_drvs="$(${instanciate_to_array
             (node: ''$BASE_CONFIG_EXPR.deployCommand \"${node}\" \"${action}\"'')})"
         export system_drvs
+        echo
+
+        echo "Uploading derivations..."
+        ${(local_lib.concatMapStringsSep "\necho\n" (node:
+            uploadScript node fast)
+        nodes_filtered)}
+        echo
 
         ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
+          echo "Building ${node}..."
+          cmd="$(${buildScript node action fast})"
+
+          echo "Copying ${node}..."
+          ${copyScript node deployCommands.${action}} "$cmd"
+
           echo "Deploying ${node}..."
-          ${stage1_script node action fast}
+          ${deployScript node deployCommands.${action}} "$cmd"
         '') nodes_filtered)}
 
 
@@ -247,76 +260,136 @@ rec {
         rm -rf "$tmpDir"
       '';
 
-  stage1_script = name: action: fast: let
+  uploadScript = name: fast: let
       config = nodesBuilt.${name};
       pkgs = config._module.args.pkgs;
-      lib = config._module.args.pkgs.lib;
+      lib = pkgs.lib;
 
-      cmd = deployCommands.${action};
       build_host = config.deployment.buildHost;
-      target_host = if cmd.host == "target"
-          then config.deployment.targetHost
-          else config.deployment.provisionHost;
 
-      default = d: x: if x == null then d else x;
-
-      remote_build = building_nix: expr: let
-          build_host_prefix =
-            lib.optionalString (build_host != null)
-                ''ssh $NIX_SSHOPTS "${build_host}"'';
-          path_prefix =
-            lib.optionalString (!building_nix && !fast)
-                ''PATH="$remotePath"'';
-
-        in pkgs.writeScript "remote-build-${name}" ''
-          #!${pkgs.bash}/bin/bash
-          set -e
-          export NIX_SSHOPTS
-          drv="$1"
-
-          ${lib.optionalString (build_host != null) ''
-            nix-copy-closure --to "${build_host}" "$drv"
-          ''}
-
-          ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" > /dev/null
-
-          # Get only the main path
-          nix-store -q --outputs "$drv" | tail -1
-      '';
-
-    in pkgs.writeScript "nixos-deploy-${name}" ''
+    in if build_host != null then
+        pkgs.writeScript "nixos-deploy-upload-${name}" ''
       #!${pkgs.bash}/bin/bash
       set -e
       export NIX_SSHOPTS="${config.deployment.ssh_options}"
       NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
 
+      ${lib.optionalString (!fast) ''
+        eval "$nix_drvs"
+        nix-copy-closure --to "${build_host}" "''${drvs["${name}"]}" \
+          2>&1 | head -1
+      ''}
+
+      eval "$system_drvs"
+      nix-copy-closure --to "${build_host}" "''${drvs["${name}"]}" \
+        2>&1 | head -1
+    '' else "";
+
+  buildToBuildHost = node: fast: building_nix: let
+      config = nodesBuilt.${node};
+      pkgs = config._module.args.pkgs;
+      lib = pkgs.lib;
+
+      build_host = config.deployment.buildHost;
+      build_host_prefix =
+        lib.optionalString (build_host != null)
+            ''ssh $NIX_SSHOPTS "${build_host}"'';
+      path_prefix =
+        lib.optionalString (!building_nix && !fast)
+            ''PATH="$remotePath"'';
+
+    in pkgs.writeScript "nixos-deploy-remote-build-${node}" ''
+      #!${pkgs.bash}/bin/bash
+      set -e
+      export NIX_SSHOPTS="${config.deployment.ssh_options}"
+      NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
+      drv="$1"
+
+      ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" > /dev/null
+
+      # Get only the main path
+      nix-store -q --outputs "$drv" | tail -1
+  '';
+
+  buildScript = name: action: fast: let
+      config = nodesBuilt.${name};
+      pkgs = config._module.args.pkgs;
+      lib = pkgs.lib;
+
+      build_host = config.deployment.buildHost;
+
+
+    in pkgs.writeScript "nixos-deploy-build-${name}" ''
+      #!${pkgs.bash}/bin/bash
+      set -e
 
       ${lib.optionalString (!fast) ''
         echo "Building Nix..." >&2
         eval "$nix_drvs"
         drv=''${drvs["${name}"]}
-        outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"} "$drv")"
+        outPath="$(${buildToBuildHost name fast true} "$drv")"
         remotePath="$outPath/bin"
         export remotePath
       ''}
 
-      echo "Building system..."
+      echo "Building system..." >&2
       eval "$system_drvs"
       drv=''${drvs["${name}"]}
-      cmd="$(${remote_build false ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''} "$drv")"
+      ${buildToBuildHost name fast false} "$drv"
+    '';
+
+  copyScript = name: cmd: let
+      config = nodesBuilt.${name};
+      pkgs = config._module.args.pkgs;
+      lib = pkgs.lib;
+
+      build_host = config.deployment.buildHost;
+      target_host = if cmd.host == "target"
+          then config.deployment.targetHost
+          else config.deployment.provisionHost;
+
+    in pkgs.writeScript "nixos-deploy-copy-${name}" ''
+      set -e
+      export NIX_SSHOPTS="${config.deployment.ssh_options}"
+      NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
+      cmd="$1"
+
+      ${if target_host == null && build_host == null then ''
+      '' else if target_host == null then ''
+        sudo nix-copy-closure --from "${build_host}" "$cmd"
+      '' else if build_host == null then ''
+        nix-copy-closure --to "${target_host}" "$cmd"
+      '' else if build_host == target_host then ''
+      '' else ''
+        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
+      ''}
+    '';
+
+  deployScript = name: cmd: let
+      config = nodesBuilt.${name};
+      pkgs = config._module.args.pkgs;
+      lib = pkgs.lib;
+
+      build_host = config.deployment.buildHost;
+      target_host = if cmd.host == "target"
+          then config.deployment.targetHost
+          else config.deployment.provisionHost;
+
+    in pkgs.writeScript "nixos-deploy-deploy-${name}" ''
+      set -e
+      export NIX_SSHOPTS="${config.deployment.ssh_options}"
+      NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
+      cmd="$1"
 
       ${if target_host == null && build_host == null then ''
         ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
       '' else if target_host == null then ''
-        sudo nix-copy-closure --from "${build_host}" "$cmd"
         ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
       '' else if build_host == null then ''
-        nix-copy-closure --to "${target_host}" "$cmd"
         ssh "${target_host}" "$cmd"
       '' else if build_host == target_host then ''
         ssh $NIX_SSHOPTS "${build_host}" "$cmd"
       '' else ''
-        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
         ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
       ''}
     '';
