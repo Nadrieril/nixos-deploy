@@ -77,9 +77,7 @@ let
 
   deployCommands = let
     activate = action: {
-      host = "target";
       needsRoot = action != "dry-activate";
-
       cmd = { pkgs, lib, config, node, ... }:
         pkgs.writeScript "nixos-${action}-${node}" ''
           #!${pkgs.bash}/bin/bash
@@ -103,7 +101,6 @@ let
       host = "build";
       phases = phases: with phases;
         [ instantiate upload build execAction ];
-      needsRoot = false;
       cmd = { pkgs, lib, config, node, ... }:
         pkgs.writeScript "nixos-build-${node}" ''
           #!${pkgs.bash}/bin/bash
@@ -112,8 +109,6 @@ let
     };
 
     diff = {
-      host = "target";
-      needsRoot = false;
       phases = phases: with phases; let
           diff_phase = args: with args; ''
             echo "Downloading current system derivation..." >&2
@@ -219,7 +214,7 @@ let
       echo "Deploying..." >&2
       cmd=''${cmds["${node}"]}
       ${if target_host == null then ''
-        ${lib.optionalString action.needsRoot "sudo "}"$cmd"
+        ${lib.optionalString (action.needsRoot or false) "sudo "}"$cmd"
       '' else if build_host == null || build_host == target_host then ''
         ssh $NIX_SSHOPTS "${target_host}" "$cmd"
       '' else ''
@@ -282,7 +277,7 @@ let
         build_host_prefix =
           lib.optionalString (build_host != null)
               ''ssh $NIX_SSHOPTS "${build_host}"'';
-        target_host = if action.host == "target"
+        target_host = if (action.host or "target") == "target"
             then config.deployment.targetHost
           else if action.host == "provision"
             then config.deployment.provisionHost
