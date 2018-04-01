@@ -96,4 +96,4 @@ hosts_list="$(python -c 'import json, sys; print(json.dumps([s for arg in sys.ar
 
 export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
-$(nix-build --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
+$(nix-build --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
