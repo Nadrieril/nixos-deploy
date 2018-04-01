@@ -141,6 +141,7 @@ let
             then "$BASE_CONFIG_EXPR.nodes.${node}.nix.package"
             else ''$BASE_CONFIG_EXPR.deployCommand \"${node}\" \"${action.name}\"'';
       in ''
+        echo "Instantiating ${if nix then "nix" else "system"}..." >&2
         declare -A ${arr}
 
         drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
@@ -152,7 +153,7 @@ let
       '';
 
     upload = nix: args: with args; ''
-      echo "Uploading ${if nix then "Nix" else "system"}..." >&2
+      echo "Uploading ${if nix then "nix" else "system"}..." >&2
       drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
       nix-copy-closure --to "${build_host}" "$drv" \
         2>&1 | head -1
@@ -166,7 +167,7 @@ let
           lib.optionalString (!nix && !fast)
               ''PATH="''${remotePaths["${node}"]}"'';
       in ''
-        echo "Building ${if nix then "Nix" else "system"}..." >&2
+        echo "Building ${if nix then "nix" else "system"}..." >&2
         drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
         ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" > /dev/null
         ${if nix then ''
@@ -186,6 +187,7 @@ let
             then config.deployment.targetHost
             else config.deployment.provisionHost;
       in ''
+        echo "Copying..." >&2
         cmd=''${cmds["${node}"]}
         ${if build_host == null && target_host != null then ''
           nix-copy-closure --to "${target_host}" "$cmd"
@@ -202,6 +204,7 @@ let
             then config.deployment.targetHost
             else config.deployment.provisionHost;
       in ''
+        echo "Deploying..." >&2
         cmd=''${cmds["${node}"]}
         ${if target_host == null then ''
           ${lib.optionalString action.needsRoot "sudo "}"$cmd"
