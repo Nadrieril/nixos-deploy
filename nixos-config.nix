@@ -114,13 +114,19 @@ let
     diff = {
       host = "target";
       needsRoot = false;
-      cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-diff-${node}" ''
-          #!${pkgs.bash}/bin/bash
-          ${pkgs.nix-diff}/bin/nix-diff \
-            $(nix-store -q --deriver $(readlink -f /run/current-system)) \
-            $(nix-store -q --deriver ${config.system.build.toplevel})
-        '';
+      phases = phases: with phases; let
+          diff_phase = args: with args; ''
+            echo "Downloading current system derivation..." >&2
+            current_sys="$(${target_host_prefix} readlink -f /run/current-system)"
+            current_sys_drv="$(${target_host_prefix} nix-store -q --deriver $current_sys)"
+            ${lib.optionalString (target_host != null) ''
+              nix-copy-closure --from "${target_host}" "$current_sys_drv" 2>&1 | head -1
+            ''}
+            sys_drv=''${system_drvs["${node}"]}
+            ${pkgs.nix-diff}/bin/nix-diff $current_sys_drv $sys_drv
+          '';
+        in [ instantiate_sys diff_phase ];
+      cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
     };
 
     build-image.host = "provision";
@@ -186,9 +192,6 @@ let
     '';
 
     build = nix: args: with args; let
-        build_host_prefix =
-          lib.optionalString (build_host != null)
-              ''ssh $NIX_SSHOPTS "${build_host}"'';
         path_prefix =
           lib.optionalString (!nix && !fast)
               ''PATH="''${remotePaths["${node}"]}"'';
@@ -275,11 +278,17 @@ let
         pkgs = config._module.args.pkgs;
         lib = pkgs.lib;
         build_host = config.deployment.buildHost;
+        build_host_prefix =
+          lib.optionalString (build_host != null)
+              ''ssh $NIX_SSHOPTS "${build_host}"'';
         target_host = if action.host == "target"
             then config.deployment.targetHost
           else if action.host == "provision"
             then config.deployment.provisionHost
             else config.deployment.buildHost;
+        target_host_prefix =
+          lib.optionalString (target_host != null)
+              ''ssh $NIX_SSHOPTS "${target_host}"'';
       };
     in ''
       export NIX_SSHOPTS="${args.config.deployment.ssh_options}"
