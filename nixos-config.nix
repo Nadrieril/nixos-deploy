@@ -119,9 +119,7 @@ let
             echo "Downloading current system derivation..." >&2
             current_sys="$(${target_host_prefix} readlink -f /run/current-system)"
             current_sys_drv="$(${target_host_prefix} nix-store -q --deriver $current_sys)"
-            ${lib.optionalString (target_host != null) ''
-              nix-copy-closure --from "${target_host}" "$current_sys_drv" 2>&1 | head -1
-            ''}
+            ${copy_helper target_host null ''"$current_sys_drv"''}
             sys_drv=''${system_drvs["${node}"]}
             ${pkgs.nix-diff}/bin/nix-diff $current_sys_drv $sys_drv
           '';
@@ -187,8 +185,7 @@ let
     upload = nix: args: with args; ''
       echo "Uploading ${if nix then "nix" else "system"}..." >&2
       drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
-      nix-copy-closure --to "${build_host}" "$drv" \
-        2>&1 | head -1
+      ${copy_helper null build_host ''"$drv"''}
     '';
 
     build = nix: args: with args; let
@@ -215,14 +212,7 @@ let
     copy = args: with args; ''
       echo "Copying..." >&2
       cmd=''${cmds["${node}"]}
-      ${if build_host == null && target_host != null then ''
-        nix-copy-closure --to "${target_host}" "$cmd"
-      '' else if build_host != null && target_host == null then ''
-        sudo nix-copy-closure --from "${build_host}" "$cmd"
-      '' else if build_host != null && build_host != target_host then ''
-        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
-      '' else ''
-      ''}
+      ${copy_helper build_host target_host ''"$cmd"''}
     '';
 
     execAction = args: with args; ''
@@ -236,6 +226,17 @@ let
         ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
       ''}
     '';
+
+
+    copy_helper = from: to: drv:
+      if from == to then ''
+      '' else if from == null then ''
+        nix-copy-closure --to "${to}" ${drv} 2>&1 | head -1
+      '' else if to == null then ''
+        sudo nix-copy-closure --from "${from}" ${drv} 2>&1 | head -1
+      '' else ''
+        ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv} 2>&1 | head -1
+      '';
 
     unless_fast = phase: args:
       local_lib.optionalString (!args.fast) (phase args);
@@ -252,7 +253,7 @@ let
     ];
 
     in {
-      inherit unless_fast if_build_host sequence sys_and_nix;
+      inherit unless_fast if_build_host sequence sys_and_nix copy_helper;
 
       instantiate = sys_and_nix instantiate;
       instantiate_nix = unless_fast (instantiate true);
