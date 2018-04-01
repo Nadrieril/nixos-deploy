@@ -212,40 +212,30 @@ let
         ''}
       '';
 
-    copy = args: with args; let
-        target_host = if action.host == "target"
-            then config.deployment.targetHost
-            else config.deployment.provisionHost;
-      in ''
-        echo "Copying..." >&2
-        cmd=''${cmds["${node}"]}
-        ${if build_host == null && target_host != null then ''
-          nix-copy-closure --to "${target_host}" "$cmd"
-        '' else if build_host != null && target_host == null then ''
-          sudo nix-copy-closure --from "${build_host}" "$cmd"
-        '' else if build_host != null && build_host != target_host then ''
-          ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
-        '' else ''
-        ''}
-      '';
+    copy = args: with args; ''
+      echo "Copying..." >&2
+      cmd=''${cmds["${node}"]}
+      ${if build_host == null && target_host != null then ''
+        nix-copy-closure --to "${target_host}" "$cmd"
+      '' else if build_host != null && target_host == null then ''
+        sudo nix-copy-closure --from "${build_host}" "$cmd"
+      '' else if build_host != null && build_host != target_host then ''
+        ssh $NIX_SSHOPTS "${build_host}" nix-copy-closure --to "${target_host}" "$cmd"
+      '' else ''
+      ''}
+    '';
 
-    execAction = args: with args; let
-        target_host = if action.host == "target"
-            then config.deployment.targetHost
-            else if action.host == "provision"
-            then config.deployment.provisionHost
-            else config.deployment.buildHost;
-      in ''
-        echo "Deploying..." >&2
-        cmd=''${cmds["${node}"]}
-        ${if target_host == null then ''
-          ${lib.optionalString action.needsRoot "sudo "}"$cmd"
-        '' else if build_host == null || build_host == target_host then ''
-          ssh $NIX_SSHOPTS "${target_host}" "$cmd"
-        '' else ''
-          ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
-        ''}
-      '';
+    execAction = args: with args; ''
+      echo "Deploying..." >&2
+      cmd=''${cmds["${node}"]}
+      ${if target_host == null then ''
+        ${lib.optionalString action.needsRoot "sudo "}"$cmd"
+      '' else if build_host == null || build_host == target_host then ''
+        ssh $NIX_SSHOPTS "${target_host}" "$cmd"
+      '' else ''
+        ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
+      ''}
+    '';
 
   };
 
@@ -270,6 +260,11 @@ let
         pkgs = config._module.args.pkgs;
         lib = pkgs.lib;
         build_host = config.deployment.buildHost;
+        target_host = if action.host == "target"
+            then config.deployment.targetHost
+          else if action.host == "provision"
+            then config.deployment.provisionHost
+            else config.deployment.buildHost;
       };
     in ''
       export NIX_SSHOPTS="${args.config.deployment.ssh_options}"
