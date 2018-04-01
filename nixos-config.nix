@@ -223,7 +223,7 @@ rec {
             lib.optionalString (build_host != null)
                 ''ssh $NIX_SSHOPTS "${build_host}"'';
           path_prefix =
-            lib.optionalString (!building_nix)
+            lib.optionalString (!building_nix && !fast)
                 ''PATH="$remotePath"'';
           run_on_build_host = cmd:
               ''${build_host_prefix} ${path_prefix} ${cmd}'';
@@ -233,35 +233,16 @@ rec {
           export NIX_SSHOPTS
           set -e
 
-          ${lib.optionalString (!building_nix) ''
-            if [ ! -f "$remotePath/nix-instantiate" ]; then
-              echo "Required Nix version ($remotePath) not present locally. Try without --fast" >&2
-              exit 1
-            fi
-            if ${build_host_prefix} [ ! -f "$remotePath/nix-instantiate" ]; then
-              echo "Required Nix version ($remotePath) not present on build host. Try without --fast" >&2
-              exit 1
-            fi
-          ''}
-
-          drv="$(${path_prefix} nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
+          drv="$(nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
           if [ -a "$drv" ]; then
-              ${if fast && building_nix then ''
-                ${path_prefix} nix-store -q --outputs "$drv" | tail -1
-              '' else ''
-                ${lib.optionalString building_nix ''
-                  echo "Building Nix locally..." >&2
-                  ${path_prefix} nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}" > /dev/null
-                  echo "Building Nix remotely..." >&2
-                ''}
-                ${lib.optionalString (build_host != null)
-                  ''nix-copy-closure --to "${build_host}" "$drv"''
-                }
-                ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
-
-                # Get only the main path
-                ${run_on_build_host ''nix-store -q --outputs "$drv"''} | tail -1
+              ${lib.optionalString (build_host != null) ''
+                nix-copy-closure --to "${build_host}" "$drv"
               ''}
+
+              ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
+
+              # Get only the main path
+              nix-store -q --outputs "$drv" | tail -1
 
           else
               echo "nix-instantiate failed" >&2
@@ -289,9 +270,12 @@ rec {
       fi
 
 
-      outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
-      remotePath="$outPath/bin"
-      export remotePath
+      ${lib.optionalString (!fast) ''
+        echo "Building Nix..." >&2
+        outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
+        remotePath="$outPath/bin"
+        export remotePath
+      ''}
 
       echo "Building system..."
       cmd="$(${remote_build false ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
