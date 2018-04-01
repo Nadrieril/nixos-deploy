@@ -233,11 +233,27 @@ rec {
           export NIX_SSHOPTS
           set -e
 
+          ${lib.optionalString (!building_nix) ''
+            if [ ! -f "$remotePath/nix-instantiate" ]; then
+              echo "Required Nix version ($remotePath) not present locally. Try without --fast" >&2
+              exit 1
+            fi
+            if ${build_host_prefix} [ ! -f "$remotePath/nix-instantiate" ]; then
+              echo "Required Nix version ($remotePath) not present on build host. Try without --fast" >&2
+              exit 1
+            fi
+          ''}
+
           drv="$(${path_prefix} nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
           if [ -a "$drv" ]; then
               ${if fast && building_nix then ''
                 ${path_prefix} nix-store -q --outputs "$drv" | tail -1
               '' else ''
+                ${lib.optionalString building_nix ''
+                  echo "Building Nix locally..." >&2
+                  ${path_prefix} nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}" > /dev/null
+                  echo "Building Nix remotely..." >&2
+                ''}
                 ${lib.optionalString (build_host != null)
                   ''nix-copy-closure --to "${build_host}" "$drv"''
                 }
@@ -273,9 +289,6 @@ rec {
       fi
 
 
-      ${lib.optionalString (!fast) ''
-        echo "Building Nix..."
-      ''}
       outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
       remotePath="$outPath/bin"
       export remotePath
