@@ -212,8 +212,15 @@ rec {
       else local_pkgs.writeScript "nixos-deploy-stage1" ''
         #!${local_pkgs.bash}/bin/bash
         set -e
+        export tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
         export BASE_CONFIG_EXPR
+
+        if [ -n "$sshMultiplexing" ]; then
+            mkdir -p $tmpDir/ssh
+            SSH_MULTIPLEXING="-o ControlMaster=auto -o ControlPath=$tmpDir/ssh/ssh-%n -o ControlPersist=60"
+            export SSH_MULTIPLEXING
+        fi
 
 
         echo "Instanciating..."
@@ -230,6 +237,14 @@ rec {
           echo "Deploying ${node}..."
           ${stage1_script node action fast}
         '') nodes_filtered)}
+
+
+        if [ -n "$sshMultiplexing" ]; then
+          for ctrl in "$tmpDir"/ssh/ssh-*; do
+              ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
+          done
+        fi
+        rm -rf "$tmpDir"
       '';
 
   stage1_script = name: action: fast: let
@@ -273,20 +288,7 @@ rec {
       #!${pkgs.bash}/bin/bash
       set -e
       export NIX_SSHOPTS="${config.deployment.ssh_options}"
-
-      if [ -n "$sshMultiplexing" ]; then
-          tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
-          # TODO: split SSHOPTS into build/target ssh opts
-          NIX_SSHOPTS="$NIX_SSHOPTS -o ControlMaster=auto -o ControlPath=$tmpDir/ssh-%n -o ControlPersist=60"
-
-          cleanup() {
-              for ctrl in "$tmpDir"/ssh-*; do
-                  ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
-              done
-              rm -rf "$tmpDir"
-          }
-          trap cleanup EXIT
-      fi
+      NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
 
 
       ${lib.optionalString (!fast) ''
