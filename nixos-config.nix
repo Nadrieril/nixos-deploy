@@ -111,6 +111,19 @@ let
         '';
     };
 
+    diff = {
+      host = "target";
+      stopsAt = null;
+      needsRoot = false;
+      cmd = { pkgs, lib, config, node, ... }:
+        pkgs.writeScript "nixos-diff-${node}" ''
+          #!${pkgs.bash}/bin/bash
+          ${pkgs.nix-diff}/bin/nix-diff \
+            $(nix-store -q --deriver $(readlink -f /run/current-system)) \
+            $(nix-store -q --deriver ${config.system.build.toplevel})
+        '';
+    };
+
     build-image.host = "provision";
     build-image.stopsAt = null;
     build-image.needsRoot = true;
