@@ -341,6 +341,9 @@ in
 rec {
   nodes = nodesBuilt;
 
+  hosts_list = builtins.toJSON (builtins.attrNames nodesBuilt);
+  commands_list = builtins.toJSON (builtins.attrNames deployCommands);
+
   stage1 = action: hosts_json: fast: let
       nodes = builtins.fromJSON hosts_json;
       nodes_filtered = if nodes == []

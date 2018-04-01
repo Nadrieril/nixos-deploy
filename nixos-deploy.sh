@@ -78,6 +78,19 @@ if [[ "$hostsFile" != /* ]]; then
     hostsFile="$PWD/$hostsFile"
 fi
 
+export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
+
+if [[ "$action" == "__complete_hosts" || "$action" == "__complete_commands" ]]; then
+    if [[ "$action" == "__complete_hosts" ]]; then
+        v="hosts_list"
+    else
+        v="commands_list"
+    fi
+    nix-instantiate --eval -E "$BASE_CONFIG_EXPR.$v" 2>/dev/null \
+        | jq -r 'fromjson | join(" ")'
+    exit
+fi
+
 if [ ! -f "$hostsFile" ]; then
     echo "$SCRIPT_NAME: file '$hostsFile' does not exist"
     exit 1
@@ -94,6 +107,5 @@ fi
 
 hosts_list="$(python -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
 
-export BASE_CONFIG_EXPR="(import $SCRIPT_DIR/nixos-config.nix \"$hostsFile\")"
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
 $(nix-build --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")

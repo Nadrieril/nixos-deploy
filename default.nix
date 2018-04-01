@@ -17,8 +17,9 @@ with pkgs; stdenv.mkDerivation {
  '';
 
   installPhase = ''
-    mkdir -p $out/share $out/bin
+    mkdir -p $out/share/zsh/vendor-completions $out/bin
     cp nixos-config.nix $out/share/
     cp nixos-deploy.sh $out/bin/nixos-deploy
+    cp zsh-completion.zsh $out/share/zsh/vendor-completions/_nixos-deploy
   '';
 }
