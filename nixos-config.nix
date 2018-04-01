@@ -122,6 +122,16 @@ let
       cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
     };
 
+    gc = {
+      forceFast = true;
+      needsRoot = true;
+      cmd = { pkgs, lib, config, node, ... }:
+        pkgs.writeScript "nixos-gc-${node}" ''
+          #!${pkgs.bash}/bin/bash
+          ${pkgs.nix}/bin/nix-collect-garbage -d
+        '';
+    };
+
     build-image.host = "provision";
     build-image.needsRoot = true;
     build-image.cmd = { pkgs, lib, config, node, ... }: let
@@ -375,7 +385,9 @@ rec {
 
         ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
           echo "Deploying ${node}..."
-          ${nixosDeploy node (deployCommands.${action} // {name=action;}) fast}
+          ${nixosDeploy node
+              (deployCommands.${action} // {name=action;})
+              (fast || deployCommands.${action}.forceFast or false)}
         '') nodes_filtered)}
 
 
