@@ -218,12 +218,12 @@ rec {
 
       default = d: x: if x == null then d else x;
 
-      remote_build = set_remote_path: expr: let
+      remote_build = building_nix: expr: let
           build_host_prefix =
             lib.optionalString (build_host != null)
                 ''ssh $NIX_SSHOPTS "${build_host}"'';
           path_prefix =
-            lib.optionalString (set_remote_path && !fast)
+            lib.optionalString (!building_nix)
                 ''PATH="$remotePath"'';
           run_on_build_host = cmd:
               ''${build_host_prefix} ${path_prefix} ${cmd}'';
@@ -235,13 +235,17 @@ rec {
 
           drv="$(${path_prefix} nix-instantiate --expr "${expr}" "${"$"}{extraInstantiateFlags[@]}")"
           if [ -a "$drv" ]; then
-              ${lib.optionalString (build_host != null)
-                ''nix-copy-closure --to "${build_host}" "$drv"''
-              }
-              ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
+              ${if fast && building_nix then ''
+                ${path_prefix} nix-store -q --outputs "$drv" | tail -1
+              '' else ''
+                ${lib.optionalString (build_host != null)
+                  ''nix-copy-closure --to "${build_host}" "$drv"''
+                }
+                ${run_on_build_host ''nix-store -r "$drv" "${"$"}{extraBuildFlags[@]}"''} > /dev/null
 
-              # Get only the main path
-              ${run_on_build_host ''nix-store -q --outputs "$drv"''} | tail -1
+                # Get only the main path
+                ${run_on_build_host ''nix-store -q --outputs "$drv"''} | tail -1
+              ''}
 
           else
               echo "nix-instantiate failed" >&2
@@ -269,15 +273,15 @@ rec {
       fi
 
 
-      ${lib.optionalString (fast == false) ''
+      ${lib.optionalString (!fast) ''
         echo "Building Nix..."
-        outPath="$(${remote_build false "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
-        remotePath="$outPath/bin"
-        export remotePath
       ''}
+      outPath="$(${remote_build true "$BASE_CONFIG_EXPR.nodes.${name}.nix.package"})"
+      remotePath="$outPath/bin"
+      export remotePath
 
       echo "Building system..."
-      cmd="$(${remote_build true ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
+      cmd="$(${remote_build false ''$BASE_CONFIG_EXPR.deployCommand \"${name}\" \"${action}\"''})"
 
       ${if target_host == null && build_host == null then ''
         ${lib.optionalString cmd.needsRoot "sudo "}"$cmd"
