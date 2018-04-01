@@ -349,6 +349,13 @@ rec {
           (builtins.attrNames nodesBuilt)
         else nodes;
 
+      null_key = k: if k == null then "_" else k;
+      un_null_key = k: if k == "_" then null else k;
+
+      nodes_by_build_host = local_lib.foldAttrs (n: a: [n] ++ a) []
+          (builtins.map (node: let
+              key = nodesBuilt.${node}.deployment.buildHost;
+            in {${null_key key} = node;}) nodes_filtered);
 
     in if !deployCommands?${action}
       then local_pkgs.writeScript "unknown-action" ''
@@ -370,10 +377,11 @@ rec {
         fi
 
 
-        ${(local_lib.concatMapStringsSep "\necho\n" (node: ''
-          echo "Deploying ${node}..."
-          ${nixosDeploy node (deployCommands.${action} // {name=action;}) fast}
-        '') nodes_filtered)}
+        ${local_lib.concatStringsSep "\necho\n" (local_lib.flatten (
+          local_lib.mapAttrsToList (build_host: builtins.map (node: ''
+            echo "Deploying ${node}..."
+            ${nixosDeploy node (deployCommands.${action} // {name=action;}) fast}
+        '')) nodes_by_build_host))}
 
 
         if [ -n "$sshMultiplexing" ]; then
