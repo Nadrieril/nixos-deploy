@@ -78,7 +78,6 @@ let
   deployCommands = let
     activate = action: {
       host = "target";
-      stopsAt = null;
       needsRoot = action != "dry-activate";
 
       cmd = { pkgs, lib, config, node, ... }:
@@ -102,7 +101,8 @@ let
 
     build = {
       host = "build";
-      stopsAt = "build";
+      phases = phases: with phases;
+        [ instantiate upload build execAction ];
       needsRoot = false;
       cmd = { pkgs, lib, config, node, ... }:
         pkgs.writeScript "nixos-build-${node}" ''
@@ -113,7 +113,6 @@ let
 
     diff = {
       host = "target";
-      stopsAt = null;
       needsRoot = false;
       cmd = { pkgs, lib, config, node, ... }:
         pkgs.writeScript "nixos-diff-${node}" ''
@@ -125,7 +124,6 @@ let
     };
 
     build-image.host = "provision";
-    build-image.stopsAt = null;
     build-image.needsRoot = true;
     build-image.cmd = { pkgs, lib, config, node, ... }: let
         image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
@@ -148,7 +146,6 @@ let
       '';
 
     install.host = "provision";
-    install.stopsAt = null;
     install.needsRoot = true;
     install.cmd = { pkgs, lib, config, node, ... }: let
         nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
@@ -161,7 +158,7 @@ let
   };
 
 
-  phases = rec {
+  phases = let
     instantiate = nix: args: with args; let
         arr = if nix then "nix_drvs" else "system_drvs";
         expr = if nix
@@ -237,23 +234,41 @@ let
       ''}
     '';
 
-  };
+    unless_fast = phase: args:
+      local_lib.optionalString (!args.fast) (phase args);
+
+    if_build_host = phase: args:
+      local_lib.optionalString (args.build_host != null) (phase args);
+
+    sequence = phases: args:
+      local_lib.concatMapStringsSep "\n" (p: p args) phases;
+
+    sys_and_nix = phase: sequence [
+      (unless_fast (phase true))
+      (phase false)
+    ];
+
+    in {
+      inherit unless_fast if_build_host sequence sys_and_nix;
+
+      instantiate = sys_and_nix instantiate;
+      instantiate_nix = unless_fast (instantiate true);
+      instantiate_sys = instantiate false;
+      build = sys_and_nix build;
+      build_nix = unless_fast (build true);
+      build_sys = build false;
+      upload = if_build_host (sys_and_nix upload);
+      upload_nix = if_build_host (unless_fast (upload true));
+      upload_sys = if_build_host (upload false);
+      inherit copy execAction;
+    };
 
   nixosDeploy = node: action: fast: let
-      optional = x: v: if (!x)
-          then (x:"") else v;
-      phase_list = with phases; [
-        (optional (!fast) (instantiate true))
-        (instantiate false)
-        (optional (!fast && args.build_host != null) (upload true))
-        (optional (args.build_host != null) (upload false))
-        (optional (!fast) (build true))
-        (build false)
-      ] ++ (local_lib.optionals (action.stopsAt != "build") [
-        copy
-      ]) ++ [
-        execAction
-      ];
+      default_phases = phases: with phases;
+          [ instantiate upload build copy execAction ];
+      action_phases = action.phases or default_phases;
+      combined_phases = phases.sequence (action_phases phases);
+
       args = rec {
         inherit node fast action;
         config = nodesBuilt.${node};
@@ -269,7 +284,7 @@ let
     in ''
       export NIX_SSHOPTS="${args.config.deployment.ssh_options}"
       NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
-      ${local_lib.concatMapStringsSep "\n" (phase: phase args) phase_list}
+      ${combined_phases args}
     '';
 
 
