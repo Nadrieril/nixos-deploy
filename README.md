@@ -13,7 +13,11 @@ A tool similar to `nixops` but limited to remote ssh deployment; essentially `ni
 
 - the `install` command makes it easy to `nixos-install` a target configuration on a disk, even from a non-NixOS machine
 
+- the `diff` command uses `nix-diff` toi show the differences between the currently running system and the one to be deloyed
+
 - supports having a separate build host for each node
+
+- The code is modular to make creating new commands (somewhat) easy
 
 
 ## Usage
