@@ -236,11 +236,11 @@ let
     copy_helper = from: to: drv:
       if from == to then ''
       '' else if from == null then ''
-        nix-copy-closure --to "${to}" ${drv} 2>&1 | head -1
+        nix-copy-closure --to "${to}" ${drv}
       '' else if to == null then ''
-        sudo nix-copy-closure --from "${from}" ${drv} 2>&1 | head -1
+        sudo nix-copy-closure --from "${from}" ${drv}
       '' else ''
-        ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv} 2>&1 | head -1
+        ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv}
       '';
 
     unless_fast = phase: args:
