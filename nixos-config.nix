@@ -132,6 +132,16 @@ let
         '';
     };
 
+    version = {
+      forceFast = true;
+      cmd = { pkgs, lib, config, node, ... }:
+        pkgs.writeScript "nixos-version-${node}" ''
+          #!${pkgs.bash}/bin/bash
+          source /etc/os-release
+          echo "${node}: $PRETTY_NAME"
+        '';
+    };
+
     build-image.host = "provision";
     build-image.needsRoot = true;
     build-image.cmd = { pkgs, lib, config, node, ... }: let
