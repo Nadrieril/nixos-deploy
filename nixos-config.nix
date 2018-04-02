@@ -114,8 +114,20 @@ let
             echo "Downloading current system derivation..." >&2
             current_sys="$(${target_host_prefix} readlink -f /run/current-system)"
             current_sys_drv="$(${target_host_prefix} nix-store -q --deriver $current_sys)"
-            ${copy_helper target_host null ''"$current_sys_drv"''}
+
+            if [ -f "$current_sys_drv" ]; then
+              :
+            elif ${target_host_prefix} [ -f "$current_sys_drv" ]; then
+              ${copy_helper target_host null ''"$current_sys_drv"''}
+            elif ${build_host_prefix} [ -f "$current_sys_drv" ]; then
+              ${copy_helper build_host null ''"$current_sys_drv"''}
+            else
+              echo "Could not find the derivation $current_sys_drv on any host. Aborting."
+              exit 1
+            fi
+
             sys_drv=''${system_drvs["${node}"]}
+            echo "nix-diff $current_sys_drv $sys_drv"
             ${pkgs.nix-diff}/bin/nix-diff $current_sys_drv $sys_drv
           '';
         in [ instantiate_sys diff_phase ];
