@@ -257,6 +257,7 @@ let
 
     copy_helper = from: to: drv:
       if from == to then ''
+        :
       '' else if from == null then ''
         nix-copy-closure --to "${to}" ${drv}
       '' else if to == null then ''
