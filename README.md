@@ -1,5 +1,7 @@
 # nixos-deploy
 
+WARNING: This is very much a work-in-progress. Use at your own risks. PRs are welcome :)
+
 A tool similar to `nixops` but limited to remote ssh deployment; essentially `nixos-rebuild` on steroids.
 
 
