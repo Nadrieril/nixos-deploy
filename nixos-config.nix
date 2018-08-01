@@ -210,8 +210,8 @@ let
       '';
 
     upload = nix: args: with args; ''
-      echo "Uploading ${if nix then "nix" else "system"}..." >&2
       drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
+      echo "Uploading ${if nix then "nix" else "system"}... ($drv)" >&2
       ${copy_helper null build_host ''"$drv"''}
     '';
 
@@ -220,8 +220,8 @@ let
           lib.optionalString (!nix && !fast)
               ''PATH="''${remotePaths["${node}"]}"'';
       in ''
-        echo "Building ${if nix then "nix" else "system"}..." >&2
         drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
+        echo "Building ${if nix then "nix" else "system"}... ($drv)" >&2
         ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" \
             2>&1 > /dev/null | ( grep -v -- "--add-root" || true )
         ${if nix then ''
@@ -237,14 +237,14 @@ let
       '';
 
     copy = args: with args; ''
-      echo "Copying..." >&2
       cmd=''${cmds["${node}"]}
+      echo "Copying... ($cmd)" >&2
       ${copy_helper build_host target_host ''"$cmd"''}
     '';
 
     execAction = args: with args; ''
-      echo "Deploying..." >&2
       cmd=''${cmds["${node}"]}
+      echo "Deploying... ($cmd)" >&2
       ${if target_host == null then ''
         ${lib.optionalString (action.needsRoot or false) "sudo "}"$cmd"
       '' else if build_host == null || build_host == target_host then ''
