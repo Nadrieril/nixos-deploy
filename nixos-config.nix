@@ -108,6 +108,16 @@ let
         '';
     };
 
+    instantiate = {
+      phases = phases: with phases; let
+          echo_phase = args: with args; ''
+            sys_drv=''${system_drvs["${node}"]}
+            echo "$sys_drv"
+          '';
+        in [ instantiate_sys echo_phase ];
+      cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
+    };
+
     diff = {
       phases = phases: with phases; let
           diff_phase = args: with args; ''
