@@ -368,7 +368,7 @@ let
           else <nixos/nixos>;
         relativeImports = map (s: if impureLightConfig.eval.overrideNixosPath != null
           then "${impureLightConfig.eval.overrideNixosPath}/${s}"
-          else "${<nixos>}/${s}") impureLightConfig.eval.relativeImports; 
+          else <nixos> + "/${s}") impureLightConfig.eval.relativeImports; 
     in (import nixosPath { configuration = {
           imports = [ configuration ] ++ relativeImports;
           deployment.internal.nixosPath = nixosPath;
