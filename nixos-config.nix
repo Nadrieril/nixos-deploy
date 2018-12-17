@@ -349,9 +349,10 @@ let
       };
       eval.relativeImports = lib.mkOption {
         type = lib.types.listOf lib.types.string;
-        default = null;
+        default = [];
+        example = [ "nixos/modules/profiles/hardened.nix" ];
         description = ''
-          This option specifies the path to be used to build the nixos configuration.
+          When overriding the nixos path, this makes it possible to import modules relative to the overriden nixos path.
         '';
       };
     };
