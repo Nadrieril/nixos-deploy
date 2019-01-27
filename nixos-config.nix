@@ -417,6 +417,11 @@ rec {
         #!${local_pkgs.bash}/bin/bash
         set -e
         export tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)
+        cleanup() {
+          rm -rf "$tmpDir"
+        }
+        trap 'cleanup' SIGINT
+
         export extraInstantiateFlags extraBuildFlags sshMultiplexing
         export BASE_CONFIG_EXPR
 
@@ -440,7 +445,7 @@ rec {
               ssh -o ControlPath="$ctrl" -O exit dummyhost 2>/dev/null || true
           done
         fi
-        rm -rf "$tmpDir"
+        cleanup
       '';
 
 
