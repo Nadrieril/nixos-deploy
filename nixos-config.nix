@@ -341,8 +341,8 @@ let
   overrideNixosConf = { name, config, pkgs, lib, ... }: {
     options = {
       eval.overrideNixosPath = lib.mkOption {
-        type = lib.types.nullOr lib.types.path;
-        default = null;
+        type = lib.types.string;
+        default = toString <nixos>;
         description = ''
           This option specifies the path to be used to build the nixos configuration.
         '';
@@ -364,12 +364,9 @@ let
           modules = [ configuration ];
           check = false;
         }).config;
-        nixosPath = if impureLightConfig.eval.overrideNixosPath != null
-          then "${impureLightConfig.eval.overrideNixosPath}/nixos"
-          else <nixos/nixos>;
-        relativeImports = map (s: if impureLightConfig.eval.overrideNixosPath != null
-          then "${impureLightConfig.eval.overrideNixosPath}/${s}"
-          else <nixos> + "/${s}") impureLightConfig.eval.relativeImports; 
+        mkNixosPath = p: "${impureLightConfig.eval.overrideNixosPath}/${p}";
+        nixosPath = mkNixosPath "nixos";
+        relativeImports = map mkNixosPath impureLightConfig.eval.relativeImports;
     in (import nixosPath { configuration = {
           imports = [ configuration ] ++ relativeImports;
           deployment.internal.nixosPath = nixosPath;
