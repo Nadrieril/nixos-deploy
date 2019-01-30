@@ -360,8 +360,8 @@ let
 
   buildNixOSSystem = configuration:
     let impureLightConfig = (import <nixos/nixos/lib/eval-config.nix> {
-          baseModules = [];
-          modules = [ configuration ];
+          baseModules = [ ];
+          modules = [ <nixos/nixos/modules/misc/nixpkgs.nix> configuration ];
           check = false;
         }).config;
         mkNixosPath = p: "${toString impureLightConfig.eval.overrideNixosPath}/${p}";
