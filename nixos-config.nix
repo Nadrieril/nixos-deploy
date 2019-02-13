@@ -45,7 +45,7 @@ let
         default = {
           name = "nixos-${name}-disk-image";
           format = "qcow2";
-          diskSize = "15000";
+          diskSize = "20000";
         };
       };
 
