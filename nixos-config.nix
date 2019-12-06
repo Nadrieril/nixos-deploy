@@ -348,7 +348,7 @@ let
         '';
       };
       eval.relativeImports = lib.mkOption {
-        type = lib.types.listOf lib.types.string;
+        type = lib.types.listOf lib.types.str;
         default = [];
         example = [ "nixos/modules/profiles/hardened.nix" ];
         description = ''
