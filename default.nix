@@ -8,13 +8,13 @@ with pkgs; stdenv.mkDerivation {
     # The script expects the Nix file defining the options to be
     # stored in the same directory, which is not the case in the
     # derivation output:
-    sed -i "s:^SCRIPT_DIR.*$:SCRIPT_DIR=$out/share:g" nixos-deploy
+    sed -i "s:^SCRIPT_DIR=.*$:SCRIPT_DIR=$out/share:g" nixos-deploy
 
     # Some external commands aren't correctly recognised by Nix' shell
     # script patcher:
-    sed -i "s:python:${python}/bin/python:g" nixos-deploy
-    sed -i "s:nix-build:${nix}/bin/nix-build:g" nixos-deploy
-    sed -i "s:jq:${jq}/bin/jq:g" nixos-deploy
+    sed -i "s:^__PYTHON__=.*$:__PYTHON__=${python}/bin/python:g" nixos-deploy
+    sed -i "s:^__NIX_BUILD__=.*$:__NIX_BUILD__=${nix}/bin/nix-build:g" nixos-deploy
+    sed -i "s:^__JQ__=.*$:__JQ__=${jq}/bin/jq:g" nixos-deploy
  '';
 
   installPhase = ''

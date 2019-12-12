@@ -3,6 +3,9 @@ set -e
 
 SCRIPT_DIR="$(dirname "$0")"
 SCRIPT_NAME=$(basename $0)
+__JQ__=jq
+__PYTHON__=python
+__NIX_BUILD__=nix-build
 
 function showSyntax() {
 cat <<EOF
@@ -87,7 +90,7 @@ if [[ "$action" == "__complete_hosts" || "$action" == "__complete_commands" ]]; 
         v="commands_list"
     fi
     nix-instantiate --eval -E "$BASE_CONFIG_EXPR.$v" 2>/dev/null \
-        | jq -r 'fromjson | join(" ")'
+        | $__JQ__ -r 'fromjson | join(" ")'
     exit
 fi
 
@@ -105,7 +108,7 @@ if [[ "$hosts" == "all" ]]; then
     hosts=();
 fi
 
-hosts_list="$(python -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
+hosts_list="$($__PYTHON__ -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
 
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
-$(nix-build --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
+$($__NIX_BUILD__ --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
