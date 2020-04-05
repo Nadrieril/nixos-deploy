@@ -314,7 +314,7 @@ let
       args = rec {
         inherit node fast action;
         config = nodesBuilt.${node};
-        pkgs = config._module.args.pkgs;
+        pkgs = config.pkgs;
         lib = pkgs.lib;
         build_host = config.deployment.buildHost;
         build_host_prefix =
@@ -367,10 +367,11 @@ let
         mkNixosPath = p: "${toString impureLightConfig.eval.overrideNixosPath}/${p}";
         nixosPath = mkNixosPath "nixos";
         relativeImports = map mkNixosPath impureLightConfig.eval.relativeImports;
-    in (import nixosPath { configuration = {
+        result = import nixosPath { configuration = {
           imports = [ configuration ] ++ relativeImports;
           deployment.internal.nixosPath = nixosPath;
-        }; }).config;
+        }; };
+    in result.config // { pkgs = result.pkgs; };
 
 
   nodes = import hostsFile;
@@ -450,7 +451,7 @@ rec {
     deployCommands.${action}.cmd rec {
       inherit node;
       config = nodesBuilt.${node};
-      pkgs = config._module.args.pkgs;
+      pkgs = config.pkgs;
       lib = pkgs.lib;
     };
 
