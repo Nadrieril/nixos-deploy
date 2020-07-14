@@ -337,56 +337,30 @@ let
 
 
 
-
-  overrideNixosConf = { name, config, pkgs, lib, ... }: {
-    options = {
-      eval.overrideNixosPath = lib.mkOption {
-        type = lib.types.unspecified;
-        default = <nixos>;
-        description = ''
-          This option specifies the path to be used to build the nixos configuration.
-        '';
+  buildNode = host: config:
+    if builtins.isFunction config
+    then buildNode {
+      nixosPath = <nixos>;
+      inherit config;
+    }
+    else let
+      nixosPath = "${toString config.nixosPath}/nixos";
+      configuration = {
+        imports = [
+          deploymentConf
+          config.config
+        ];
+        _module.args = {
+          nodes = nodesBuilt;
+          name = host;
+        };
+        deployment.internal.nixosPath = nixosPath;
       };
-      eval.relativeImports = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [];
-        example = [ "nixos/modules/profiles/hardened.nix" ];
-        description = ''
-          When overriding the nixos path, this makes it possible to import modules relative to the overriden nixos path.
-        '';
-      };
-    };
-  };
-
-  buildNixOSSystem = configuration:
-    let impureLightConfig = (import <nixos/nixos/lib/eval-config.nix> {
-          baseModules = [ ];
-          modules = [ <nixos/nixos/modules/misc/nixpkgs.nix> configuration ];
-          check = false;
-        }).config;
-        mkNixosPath = p: "${toString impureLightConfig.eval.overrideNixosPath}/${p}";
-        nixosPath = mkNixosPath "nixos";
-        relativeImports = map mkNixosPath impureLightConfig.eval.relativeImports;
-        result = import nixosPath { configuration = {
-          imports = [ configuration ] ++ relativeImports;
-          deployment.internal.nixosPath = nixosPath;
-        }; };
+      result = import nixosPath { inherit configuration; };
     in result.config // { pkgs = result.pkgs; };
 
-
   nodes = import hostsFile;
-
-  nodesBuilt = local_lib.mapAttrs (host: conf: buildNixOSSystem {
-    imports = [
-      deploymentConf
-      overrideNixosConf
-      conf
-    ];
-    _module.args = {
-      nodes = nodesBuilt;
-      name = host;
-    };
-  }) nodes;
+  nodesBuilt = local_lib.mapAttrs buildNode nodes;
 
 in
 
