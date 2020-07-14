@@ -339,7 +339,7 @@ let
 
   buildNode = host: config:
     if builtins.isFunction config
-    then buildNode {
+    then buildNode host {
       nixosPath = <nixos>;
       inherit config;
     }
