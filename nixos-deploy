@@ -111,4 +111,4 @@ fi
 hosts_list="$($__PYTHON__ -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
 
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
-$($__NIX_BUILD__ --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
+source $($__NIX_BUILD__ --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
