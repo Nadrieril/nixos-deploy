@@ -236,12 +236,14 @@ let
         ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" \
             2>&1 > /dev/null | ( grep -v -- "--add-root" || true )
         ${if nix then ''
-          outPath="$(nix-store -q --outputs "$drv" | tail -1)"
+          # WARNING: this depends on the order in which nix-store outputs paths :'(
+          outPath="$(nix-store -q --outputs "$drv" | head -1)"
           remotePath="$outPath/bin"
           declare -A remotePaths
           remotePaths["${node}"]="$remotePath"
         '' else ''
-          cmd="$(nix-store -q --outputs "$drv" | tail -1)"
+          # WARNING: this depends on the order in which nix-store outputs paths :'(
+          cmd="$(nix-store -q --outputs "$drv" | head -1)"
           declare -A cmds
           cmds["${node}"]="$cmd"
         ''}
