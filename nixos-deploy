@@ -14,8 +14,9 @@ EOF
 }
 
 # Parse the command line.
+# Actually passing arrays doesn't work
 extraBuildFlags=()
-extraInstantiateFlags=()
+extraInstantiateFlags=""
 arguments=()
 hostsFile="default.nix"
 hosts=()
@@ -52,7 +53,7 @@ while [ "$#" -gt 0 ]; do
             extraBuildFlags+=("$i")
             ;;
         --show-trace)
-            extraInstantiateFlags+=("$i")
+            extraInstantiateFlags="$i"
             extraBuildFlags+=("$i")
             ;;
         --option)
@@ -111,4 +112,4 @@ fi
 hosts_list="$($__PYTHON__ -c 'import json, sys; print(json.dumps([s for arg in sys.argv[1:] for s in arg.split(",")]))' "${hosts[@]}")"
 
 export extraInstantiateFlags extraBuildFlags sshMultiplexing
-source $($__NIX_BUILD__ --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" "${extraInstantiateFlags[@]}")
+$($__NIX_BUILD__ --no-out-link --expr "$BASE_CONFIG_EXPR.stage1 \"$action\" ''$hosts_list'' $fast" $extraInstantiateFlags)
