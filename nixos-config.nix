@@ -236,8 +236,8 @@ let
         ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" \
             2>&1 > /dev/null | ( grep -v -- "--add-root" || true )
         ${if nix then ''
-          # WARNING: this depends on the order in which nix-store outputs paths :'(
-          outPath="$(nix-store -q --outputs "$drv" | head -1)"
+          # WARNING: ugly substitute to being able to select targets :'(
+          outPath="$(nix-store -q --outputs "$drv" | sort --key="1.45" | head -1)"
           remotePath="$outPath/bin"
           declare -A remotePaths
           remotePaths["${node}"]="$remotePath"
