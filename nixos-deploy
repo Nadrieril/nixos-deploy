@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 SCRIPT_NAME=$(basename $0)
 __JQ__=jq
-__PYTHON__=python
+__PYTHON__=python3
 __NIX_BUILD__=nix-build
 
 function showSyntax() {

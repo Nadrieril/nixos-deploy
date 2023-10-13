@@ -12,7 +12,7 @@ with pkgs; stdenv.mkDerivation {
 
     # Some external commands aren't correctly recognised by Nix' shell
     # script patcher:
-    sed -i "s:^__PYTHON__=.*$:__PYTHON__=${python}/bin/python:g" nixos-deploy
+    sed -i "s:^__PYTHON__=.*$:__PYTHON__=${python3}/bin/python3:g" nixos-deploy
     sed -i "s:^__NIX_BUILD__=.*$:__NIX_BUILD__=${nix}/bin/nix-build:g" nixos-deploy
     sed -i "s:^__JQ__=.*$:__JQ__=${jq}/bin/jq:g" nixos-deploy
  '';
