@@ -187,15 +187,12 @@ let
       '';
 
     install.host = "provision";
-    install.cmd = { pkgs, lib, config, node, ... }: let
-        nixos-install = (import "${config.deployment.internal.nixosPath}/modules/installer/tools/tools.nix" {
-          inherit pkgs lib config; modulesPath = null;
-        }).config.system.build.nixos-install;
-      in pkgs.writeScript "nixos-install-${node}" ''
+    install.cmd = { pkgs, lib, config, node, ... }:
+      pkgs.writeScript "nixos-install-${node}" ''
         #!${pkgs.bash}/bin/bash
         echo ""
         echo "Run the following command to install the system:"
-        echo ${nixos-install}/bin/nixos-install --system ${config.system.build.toplevel}
+        echo ${pkgs.nixos-install-tools}/bin/nixos-install --system ${config.system.build.toplevel}
       '';
   };
 
