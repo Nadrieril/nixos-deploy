@@ -1,7 +1,7 @@
 hostsFile:
 
 let
-  local_pkgs = (import <nixos> {});
+  local_pkgs = (import <nixos> { });
   local_lib = local_pkgs.lib;
 
   deploymentConf = { name, nodes, config, pkgs, lib, ... }: {
@@ -65,7 +65,7 @@ let
       deployment.internal = lib.mkOption {
         type = lib.types.attrsOf lib.types.unspecified;
         internal = true;
-        default = {};
+        default = { };
       };
     };
 
@@ -75,51 +75,54 @@ let
   };
 
 
-  deployCommands = let
-    activate = action: {
-      needsRoot = action != "dry-activate";
-      cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-${action}-${node}" ''
-          #!${pkgs.bash}/bin/bash
-          pathToConfig="${config.system.build.toplevel}"
+  deployCommands =
+    let
+      activate = action: {
+        needsRoot = action != "dry-activate";
+        cmd = { pkgs, lib, config, node, ... }:
+          pkgs.writeScript "nixos-${action}-${node}" ''
+            #!${pkgs.bash}/bin/bash
+            pathToConfig="${config.system.build.toplevel}"
 
-          echo "Activating configuration..."
-          ${lib.optionalString (action == "switch" || action == "boot") ''
-            nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-          ''}
-          "$pathToConfig/bin/switch-to-configuration" "${action}"
-        '';
-    };
+            echo "Activating configuration..."
+            ${lib.optionalString (action == "switch" || action == "boot") ''
+              nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
+            ''}
+            "$pathToConfig/bin/switch-to-configuration" "${action}"
+          '';
+      };
 
-  in {
-    switch = activate "switch";
-    boot = activate "boot";
-    test = activate "test";
-    dry-activate = activate "dry-activate";
+    in
+    {
+      switch = activate "switch";
+      boot = activate "boot";
+      test = activate "test";
+      dry-activate = activate "dry-activate";
 
-    build = {
-      host = "build";
-      phases = phases: with phases;
-        [ instantiate upload build execAction ];
-      cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-build-${node}" ''
-          #!${pkgs.bash}/bin/bash
-          echo "${config.system.build.toplevel}"
-        '';
-    };
+      build = {
+        host = "build";
+        phases = phases: with phases;
+          [ instantiate upload build execAction ];
+        cmd = { pkgs, lib, config, node, ... }:
+          pkgs.writeScript "nixos-build-${node}" ''
+            #!${pkgs.bash}/bin/bash
+            echo "${config.system.build.toplevel}"
+          '';
+      };
 
-    instantiate = {
-      phases = phases: with phases; let
+      instantiate = {
+        phases = phases: with phases; let
           echo_phase = args: with args; ''
             sys_drv=''${system_drvs["${node}"]}
             echo "$sys_drv"
           '';
-        in [ instantiate_sys echo_phase ];
-      cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
-    };
+        in
+        [ instantiate_sys echo_phase ];
+        cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
+      };
 
-    diff = {
-      phases = phases: with phases; let
+      diff = {
+        phases = phases: with phases; let
           diff_phase = args: with args; ''
             echo "Downloading current system derivation..." >&2
             current_sys="$(${target_host_prefix} readlink -f /run/current-system)"
@@ -140,70 +143,76 @@ let
             echo "nix-diff $current_sys_drv $sys_drv"
             ${pkgs.nix-diff}/bin/nix-diff $current_sys_drv $sys_drv
           '';
-        in [ instantiate_sys diff_phase ];
-      cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
-    };
+        in
+        [ instantiate_sys diff_phase ];
+        cmd = { pkgs, lib, config, node, ... }: config.system.build.toplevel;
+      };
 
-    gc = {
-      forceFast = true;
-      needsRoot = true;
-      cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-gc-${node}" ''
+      gc = {
+        forceFast = true;
+        needsRoot = true;
+        cmd = { pkgs, lib, config, node, ... }:
+          pkgs.writeScript "nixos-gc-${node}" ''
+            #!${pkgs.bash}/bin/bash
+            ${pkgs.nix}/bin/nix-collect-garbage -d
+          '';
+      };
+
+      version = {
+        forceFast = true;
+        cmd = { pkgs, lib, config, node, ... }:
+          pkgs.writeScript "nixos-version-${node}" ''
+            #!${pkgs.bash}/bin/bash
+            source /etc/os-release
+            echo "${node}: $PRETTY_NAME"
+          '';
+      };
+
+      build-image.host = "provision";
+      build-image.needsRoot = true;
+      build-image.cmd = { pkgs, lib, config, node, ... }:
+        let
+          image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
+            ({ inherit pkgs lib config; } // config.deployment.imageOptions);
+          imgPath = config.deployment.imagePath;
+        in
+        pkgs.writeScript "nixos-image-${node}" ''
           #!${pkgs.bash}/bin/bash
-          ${pkgs.nix}/bin/nix-collect-garbage -d
+          ${if imgPath == null
+          then "echo ${image}"
+          else ''
+            if [ ! -f "${imgPath}" ]; then
+              cp "${image}/nixos.qcow2" "${imgPath}"
+              chmod 640 "${imgPath}"
+              echo "Image has been copied to ${imgPath}"
+            else
+              echo "File ${imgPath} already exists ! Aborting."
+              exit 1
+            fi
+          ''}
+        '';
+
+      install.host = "provision";
+      install.cmd = { pkgs, lib, config, node, ... }:
+        pkgs.writeScript "nixos-install-${node}" ''
+          #!${pkgs.bash}/bin/bash
+          echo ""
+          echo "Run the following command to install the system:"
+          echo ${pkgs.nixos-install-tools}/bin/nixos-install --system ${config.system.build.toplevel} --no-root-password
         '';
     };
 
-    version = {
-      forceFast = true;
-      cmd = { pkgs, lib, config, node, ... }:
-        pkgs.writeScript "nixos-version-${node}" ''
-          #!${pkgs.bash}/bin/bash
-          source /etc/os-release
-          echo "${node}: $PRETTY_NAME"
-        '';
-    };
 
-    build-image.host = "provision";
-    build-image.needsRoot = true;
-    build-image.cmd = { pkgs, lib, config, node, ... }: let
-        image = import "${config.deployment.internal.nixosPath}/lib/make-disk-image.nix"
-                  ({ inherit pkgs lib config; } // config.deployment.imageOptions);
-        imgPath = config.deployment.imagePath;
-      in pkgs.writeScript "nixos-image-${node}" ''
-        #!${pkgs.bash}/bin/bash
-        ${if imgPath == null
-        then "echo ${image}"
-        else ''
-          if [ ! -f "${imgPath}" ]; then
-            cp "${image}/nixos.qcow2" "${imgPath}"
-            chmod 640 "${imgPath}"
-            echo "Image has been copied to ${imgPath}"
-          else
-            echo "File ${imgPath} already exists ! Aborting."
-            exit 1
-          fi
-        ''}
-      '';
-
-    install.host = "provision";
-    install.cmd = { pkgs, lib, config, node, ... }:
-      pkgs.writeScript "nixos-install-${node}" ''
-        #!${pkgs.bash}/bin/bash
-        echo ""
-        echo "Run the following command to install the system:"
-        echo ${pkgs.nixos-install-tools}/bin/nixos-install --system ${config.system.build.toplevel} --no-root-password
-      '';
-  };
-
-
-  phases = let
-    instantiate = nix: args: with args; let
+  phases =
+    let
+      instantiate = nix: args: with args; let
         arr = if nix then "nix_drvs" else "system_drvs";
-        expr = if nix
-            then "$BASE_CONFIG_EXPR.nodes.${node}.nix.package"
-            else ''$BASE_CONFIG_EXPR.deployCommand \"${node}\" \"${action.name}\"'';
-      in ''
+        expr =
+          if nix
+          then "$BASE_CONFIG_EXPR.nodes.${node}.nix.package"
+          else ''$BASE_CONFIG_EXPR.deployCommand \"${node}\" \"${action.name}\"'';
+      in
+      ''
         echo "Instantiating ${if nix then "nix" else "system"}..." >&2
         declare -A ${arr}
 
@@ -217,17 +226,18 @@ let
         ${arr}["${node}"]="$drv"
       '';
 
-    upload = nix: args: with args; ''
-      drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
-      echo "Uploading ${if nix then "nix" else "system"}... ($drv)" >&2
-      ${copy_helper null build_host ''"$drv"''}
-    '';
+      upload = nix: args: with args; ''
+        drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
+        echo "Uploading ${if nix then "nix" else "system"}... ($drv)" >&2
+        ${copy_helper null build_host ''"$drv"''}
+      '';
 
-    build = nix: args: with args; let
+      build = nix: args: with args; let
         path_prefix =
           lib.optionalString (!nix && !fast)
-              ''PATH="''${remotePaths["${node}"]}"'';
-      in ''
+            ''PATH="''${remotePaths["${node}"]}"'';
+      in
+      ''
         drv=''${${if nix then "nix_drvs" else "system_drvs"}["${node}"]}
         echo "Building ${if nix then "nix" else "system"}... ($drv)" >&2
         ${build_host_prefix} ${path_prefix} nix-store -r "$drv" "''${extraBuildFlags[@]}" \
@@ -246,51 +256,52 @@ let
         ''}
       '';
 
-    copy = args: with args; ''
-      cmd=''${cmds["${node}"]}
-      echo "Copying... ($cmd)" >&2
-      ${copy_helper build_host target_host ''"$cmd"''}
-    '';
-
-    execAction = args: with args; ''
-      cmd=''${cmds["${node}"]}
-      echo "Deploying... ($cmd)" >&2
-      ${if target_host == null then ''
-        ${lib.optionalString (action.needsRoot or false) "sudo "}"$cmd"
-      '' else if build_host == null || build_host == target_host then ''
-        ssh $NIX_SSHOPTS "${target_host}" "$cmd"
-      '' else ''
-        ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
-      ''}
-    '';
-
-
-    copy_helper = from: to: drv:
-      if from == to then ''
-        :
-      '' else if from == null then ''
-        nix-copy-closure --to "${to}" ${drv}
-      '' else if to == null then ''
-        sudo nix-copy-closure --from "${from}" ${drv}
-      '' else ''
-        ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv}
+      copy = args: with args; ''
+        cmd=''${cmds["${node}"]}
+        echo "Copying... ($cmd)" >&2
+        ${copy_helper build_host target_host ''"$cmd"''}
       '';
 
-    unless_fast = phase: args:
-      local_lib.optionalString (!args.fast) (phase args);
+      execAction = args: with args; ''
+        cmd=''${cmds["${node}"]}
+        echo "Deploying... ($cmd)" >&2
+        ${if target_host == null then ''
+          ${lib.optionalString (action.needsRoot or false) "sudo "}"$cmd"
+        '' else if build_host == null || build_host == target_host then ''
+          ssh $NIX_SSHOPTS "${target_host}" "$cmd"
+        '' else ''
+          ssh $NIX_SSHOPTS "${build_host}" ssh "${target_host}" "$cmd"
+        ''}
+      '';
 
-    if_build_host = phase: args:
-      local_lib.optionalString (args.build_host != null) (phase args);
 
-    sequence = phases: args:
-      local_lib.concatMapStringsSep "\n" (p: p args) phases;
+      copy_helper = from: to: drv:
+        if from == to then ''
+          :
+        '' else if from == null then ''
+          nix-copy-closure --to "${to}" ${drv}
+        '' else if to == null then ''
+          sudo nix-copy-closure --from "${from}" ${drv}
+        '' else ''
+          ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv}
+        '';
 
-    sys_and_nix = phase: sequence [
-      (unless_fast (phase true))
-      (phase false)
-    ];
+      unless_fast = phase: args:
+        local_lib.optionalString (!args.fast) (phase args);
 
-    in {
+      if_build_host = phase: args:
+        local_lib.optionalString (args.build_host != null) (phase args);
+
+      sequence = phases: args:
+        local_lib.concatMapStringsSep "\n" (p: p args) phases;
+
+      sys_and_nix = phase: sequence [
+        (unless_fast (phase true))
+        (phase false)
+      ];
+
+    in
+    {
       inherit unless_fast if_build_host sequence sys_and_nix copy_helper;
 
       instantiate = sys_and_nix instantiate;
@@ -305,9 +316,10 @@ let
       inherit copy execAction;
     };
 
-  nixosDeploy = node: action: fast: let
+  nixosDeploy = node: action: fast:
+    let
       default_phases = phases: with phases;
-          [ instantiate upload build copy execAction ];
+        [ instantiate upload build copy execAction ];
       action_phases = action.phases or default_phases;
       combined_phases = phases.sequence (action_phases phases);
 
@@ -319,17 +331,19 @@ let
         build_host = config.deployment.buildHost;
         build_host_prefix =
           lib.optionalString (build_host != null)
-              ''ssh $NIX_SSHOPTS "${build_host}"'';
-        target_host = if (action.host or "target") == "target"
-            then config.deployment.targetHost
+            ''ssh $NIX_SSHOPTS "${build_host}"'';
+        target_host =
+          if (action.host or "target") == "target"
+          then config.deployment.targetHost
           else if action.host == "provision"
-            then config.deployment.provisionHost
-            else config.deployment.buildHost;
+          then config.deployment.provisionHost
+          else config.deployment.buildHost;
         target_host_prefix =
           lib.optionalString (target_host != null)
-              ''ssh $NIX_SSHOPTS "${target_host}"'';
+            ''ssh $NIX_SSHOPTS "${target_host}"'';
       };
-    in ''
+    in
+    ''
       export NIX_SSHOPTS="${args.config.deployment.ssh_options}"
       NIX_SSHOPTS="$NIX_SSHOPTS $SSH_MULTIPLEXING"
       ${combined_phases args}
@@ -339,25 +353,29 @@ let
 
   buildNode = host: config:
     if builtins.isFunction config
-    then buildNode host {
-      nixosPath = <nixos>;
-      inherit config;
-    }
-    else let
-      nixosPath = "${toString config.nixosPath}/nixos";
-      configuration = {
-        imports = [
-          deploymentConf
-          config.config
-        ];
-        _module.args = {
-          nodes = nodesBuilt;
-          name = host;
+    then
+      buildNode host
+        {
+          nixosPath = <nixos>;
+          inherit config;
+        }
+    else
+      let
+        nixosPath = "${toString config.nixosPath}/nixos";
+        configuration = {
+          imports = [
+            deploymentConf
+            config.config
+          ];
+          _module.args = {
+            nodes = nodesBuilt;
+            name = host;
+          };
+          deployment.internal.nixosPath = nixosPath;
         };
-        deployment.internal.nixosPath = nixosPath;
-      };
-      result = import nixosPath { inherit configuration; };
-    in result.config // { pkgs = result.pkgs; };
+        result = import nixosPath { inherit configuration; };
+      in
+      result.config // { pkgs = result.pkgs; };
 
   nodes = import hostsFile;
   nodesBuilt = local_lib.mapAttrs buildNode nodes;
@@ -367,25 +385,31 @@ in
 rec {
   nodes = nodesBuilt;
 
-  hosts_list = builtins.toJSON (["all"] ++ builtins.attrNames nodesBuilt);
+  hosts_list = builtins.toJSON ([ "all" ] ++ builtins.attrNames nodesBuilt);
   commands_list = builtins.toJSON (builtins.attrNames deployCommands);
 
-  stage1 = action: hosts_json: fast: let
+  stage1 = action: hosts_json: fast:
+    let
       nodes = builtins.fromJSON hosts_json;
-      nodes_filtered = if nodes == []
-        then local_lib.filter
-          (node: nodesBuilt.${node}.deployment.includeInAll)
-          (builtins.attrNames nodesBuilt)
+      nodes_filtered =
+        if nodes == [ ]
+        then
+          local_lib.filter
+            (node: nodesBuilt.${node}.deployment.includeInAll)
+            (builtins.attrNames nodesBuilt)
         else nodes;
 
 
-    in if !deployCommands?${action}
-      then local_pkgs.writeScript "unknown-action" ''
-          #!${local_pkgs.bash}/bin/bash
-          echo "Error: unknown action '${action}'"
-          exit 1
-        ''
-      else local_pkgs.writeScript "nixos-deploy-stage1" ''
+    in
+    if !deployCommands?${action}
+    then
+      local_pkgs.writeScript "unknown-action" ''
+        #!${local_pkgs.bash}/bin/bash
+        echo "Error: unknown action '${action}'"
+        exit 1
+      ''
+    else
+      local_pkgs.writeScript "nixos-deploy-stage1" ''
         #!${local_pkgs.bash}/bin/bash
         set -e
         export tmpDir=$(mktemp -t -d nixos-deploy.XXXXXX)

@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import <nixpkgs> { } }:
 
 with pkgs; stdenv.mkDerivation {
   name = "nixos-deploy";
@@ -15,7 +15,7 @@ with pkgs; stdenv.mkDerivation {
     sed -i "s:^__PYTHON__=.*$:__PYTHON__=${python3}/bin/python3:g" nixos-deploy
     sed -i "s:^__NIX_BUILD__=.*$:__NIX_BUILD__=${nix}/bin/nix-build:g" nixos-deploy
     sed -i "s:^__JQ__=.*$:__JQ__=${jq}/bin/jq:g" nixos-deploy
- '';
+  '';
 
   installPhase = ''
     mkdir -p $out/share/zsh/vendor-completions $out/bin
