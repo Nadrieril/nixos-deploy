@@ -266,6 +266,7 @@ let
         cmd=''${cmds["${node}"]}
         echo "Deploying... ($cmd)" >&2
         ${if target_host == null then ''
+          echo "running: $cmd"
           ${lib.optionalString (action.needsRoot or false) "sudo "}"$cmd"
         '' else if build_host == null || build_host == target_host then ''
           ssh $NIX_SSHOPTS "${target_host}" "$cmd"
@@ -281,6 +282,7 @@ let
         '' else if from == null then ''
           nix-copy-closure --to "${to}" ${drv}
         '' else if to == null then ''
+          echo running: nix-copy-closure --from "${from}" ${drv}
           sudo nix-copy-closure --from "${from}" ${drv}
         '' else ''
           ssh $NIX_SSHOPTS "${from}" nix-copy-closure --to "${to}" ${drv}
