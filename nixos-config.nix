@@ -371,7 +371,7 @@ let
           ];
           _module.args = {
             nodes = nodesBuilt;
-            name = host;
+            name = local_lib.mkForce host;
           };
           deployment.internal.nixosPath = nixosPath;
         };
