@@ -198,7 +198,10 @@ let
           #!${pkgs.bash}/bin/bash
           echo ""
           echo "Run the following command to install the system:"
-          echo ${pkgs.nixos-install-tools}/bin/nixos-install --system ${config.system.build.toplevel} --no-root-password
+          echo ${pkgs.nixos-install-tools}/bin/nixos-install \
+            --no-channel-copy --no-root-password \
+            --system ${config.system.build.toplevel} \
+            --root /mnt/nixos-device
         '';
     };
 
